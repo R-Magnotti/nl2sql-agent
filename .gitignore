@@ -1,0 +1,27 @@
+## python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+## secrets
+.env
+
+
+# generated data
+datagen/output/
+*.csv
+
+# dbt
+target/
+dbt_packages/
+logs/
+
+# local databases
+*.duckdb
+*.db
+
+.vscode/
+.DS_Store
