@@ -24,4 +24,5 @@ logs/
 *.db
 
 .vscode/
-.DS_Store.env
+.DS_Store
+NOTES.md

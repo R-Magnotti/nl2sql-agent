@@ -1,0 +1,1 @@
+select * from {{ source('raw_loaded_csv', 'dim_product_raw') }}

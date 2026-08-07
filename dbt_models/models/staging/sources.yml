@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: raw_loaded_csv
+    schema: nl2sql_dev
+    tables:
+      - name: dim_date_raw
+      - name: dim_product_raw
+      - name: dim_retailer_raw
+      - name: fact_sales_raw

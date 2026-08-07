@@ -1,0 +1,1 @@
+select * from {{ source('raw_loaded_csv', 'fact_sales_raw') }}
