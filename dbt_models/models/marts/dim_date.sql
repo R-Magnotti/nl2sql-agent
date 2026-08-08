@@ -11,4 +11,4 @@ select
     fiscal_month,
     fiscal_month_name,
     iso_week
-from {{ source('raw_loaded_csv', 'dim_date_raw') }}
+from {{ ref('stg_date') }}

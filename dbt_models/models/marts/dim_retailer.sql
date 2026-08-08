@@ -5,4 +5,4 @@ select
     channel,
     region,
     country
-from {{ source('raw_loaded_csv', 'dim_retailer_raw') }}
+from {{ ref('stg_retailer') }}

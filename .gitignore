@@ -9,6 +9,8 @@ venv/
 ## secrets
 .env
 
+## images
+*.svg
 
 # generated data
 datagen/output/
@@ -25,4 +27,4 @@ logs/
 
 .vscode/
 .DS_Store
-NOTES.md
+NOTES*.md

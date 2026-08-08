@@ -6,4 +6,4 @@ select
     category,
     subcategory,
     list_price
-from {{ source('raw_loaded_csv', 'dim_product_raw') }}
+from {{ ref('stg_product') }}
