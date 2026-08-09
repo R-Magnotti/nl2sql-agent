@@ -19,10 +19,10 @@ Built and verified:
 - 12 schema tests passing: unique and not_null on every dimension key, not_null and relationship tests on every fact foreign key
 - dbt docs generated
 - Full row-count reconciliation of the fact table, documented below
+- Aggregate marts (revenue by category by month, and similar), the query surface the agent will target
 
 In progress (roadmap order):
 
-- Aggregate marts (revenue by category by month, and similar), the query surface the agent will target
 - pgvector RAG over schema documentation for context retrieval
 - Ambiguity detection and clarifying-question layer
 - Eval harness with gold queries against the committed dataset
