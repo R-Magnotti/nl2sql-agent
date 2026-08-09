@@ -1,5 +1,5 @@
 with deduped as (
-    select distinct
+    select
         date_key,
         product_key,
         retailer_key,
@@ -7,8 +7,11 @@ with deduped as (
         sales_amount,
         is_promo
     from {{ ref('stg_sales') }}
+    qualify row_number() over (
+        partition by date_key, product_key, retailer_key
+        order by sales_amount is null, units_sold is null
+    ) = 1
 )
-
 select
     d.date_key,
     d.product_key,

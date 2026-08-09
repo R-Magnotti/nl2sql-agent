@@ -5,31 +5,46 @@ models:
     columns:
       - name: product_key
         tests: [unique, not_null]
+
   - name: dim_retailer
     columns:
       - name: retailer_key
         tests: [unique, not_null]
+
   - name: dim_date
     columns:
       - name: date_key
         tests: [unique, not_null]
+
   - name: fact_sales
     columns:
       - name: date_key
         tests:
           - not_null
           - relationships:
-              to: ref('dim_date')
-              field: date_key
+              arguments:
+                to: ref('dim_date')
+                field: date_key
       - name: product_key
         tests:
           - not_null
           - relationships:
-              to: ref('dim_product')
-              field: product_key
+              arguments:
+                to: ref('dim_product')
+                field: product_key
       - name: retailer_key
         tests:
           - not_null
           - relationships:
-              to: ref('dim_retailer')
-              field: retailer_key
+              arguments:
+                to: ref('dim_retailer')
+                field: retailer_key
+
+  - name: agg_monthly_product_sales
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - calendar_year
+              - calendar_month
+              - product_key
