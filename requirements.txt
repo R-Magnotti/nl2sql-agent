@@ -1,0 +1,24 @@
+# everything installable with pip:
+#   pip install -r requirements.txt
+# for ollama and gcp auth, see INSTALL.md
+#
+# lower bounds, not exact pins. a `pip freeze` would emit ~200 packages
+# including osx-arm64 wheel builds that only reinstall on Apple Silicon.
+
+# --- embedding models ------------------------------------------------------
+sentence-transformers>=6.0.0     # CrossEncoder + processor_kwargs API
+torch>=2.13.0                    # MPS/Metal backend on Apple Silicon
+transformers>=5.16.1             # `dtype` kwarg; `processor_kwargs` replaced `tokenizer_kwargs`
+
+# --- ollama judges ---------------------------------------------------------
+openai>=3.0.0                    # OpenAI-compatible client pointed at ollama, not openai.com
+
+# --- warehouse -------------------------------------------------------------
+google-cloud-bigquery>=3.42.3
+dbt-bigquery>=1.12.0             # dbt_models/; pins hard, see INSTALL.md if it fights torch
+python-dotenv>=1.2.2
+
+# --- output + tests --------------------------------------------------------
+tabulate>=0.10.0
+tqdm>=4.70.0
+pytest>=9.1.1
