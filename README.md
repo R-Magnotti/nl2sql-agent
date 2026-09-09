@@ -22,7 +22,7 @@ The end goal is the ambiguity layer. Right now, for example, the agent silently 
 Ask it a question:
 
 ```bash
-python agent/RAG_coordinator.py
+python -m agent.RAG_agent
 ```
 
 Output:
@@ -32,7 +32,7 @@ Cleaned SQL query: SELECT SUM(total_revenue) FROM nl2sql_dev.agg_monthly_product
 Row((671247.12,), {'f0_': 0})
 ```
 
-The question lives in `agent/Prompt.py` for now. Edit it, rerun.
+The question lives in `agent/prompt_user_question.py` for now. Edit it, rerun.
 
 And here's the representative example of ambiguity, straight from the warehouse:
 
@@ -55,6 +55,20 @@ fiscal     636233.29
 
 Same question, but the results are ~$6K apart. But both make sense. An agent that picks one without asking is making a guess.
 
+## 🧪 Tests and evals
+
+Two directories, because they cost very different things to run.
+
+```bash
+pytest                  ## tests/ — seconds, no downloads, no server
+pytest evals -v         ## evals/ — ~11GB of embedder weights, hundreds of ollama calls
+python -m evals.report  ## the same evals as a table instead of pass/fail
+```
+
+`tests/` asks whether the code still works. `evals/` asks which model the agent
+should use for the decide-or-ask call, over 41 gold-labelled cases; the write-up
+is in [DECISIONS.md](DECISIONS.md) and the harness in [evals/README.md](evals/README.md).
+
 ## ⬇️ Installation
 
 You need: a GCP project with a BigQuery dataset (free sandbox works), gcloud auth, a dbt profile pointing at it, and [Ollama](https://ollama.com).
@@ -76,7 +90,7 @@ Run the agent:
 ollama serve                 ## in its own terminal
 ollama pull llama3.1:8b      ## only run one time, should be ~5 GB
 pip install openai google-cloud-bigquery
-python agent/RAG_coordinator.py
+python -m agent.RAG_agent
 ```
 
 Different model or backend: set `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`.

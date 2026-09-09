@@ -11,7 +11,7 @@ That covers every Python dependency. Three things it can't.
 
 ## Ollama
 
-The LLM judges in `agent/test_retrieval.py` call a local Ollama server. Not a pip
+The LLM judges in `evals/` call a local Ollama server. Not a pip
 package — install the app from [ollama.com](https://ollama.com), then:
 
 ```bash
