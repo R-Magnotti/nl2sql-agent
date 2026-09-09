@@ -1,8 +1,8 @@
 ## this script should be called by nl2sql driver, and act as the full RAG pipeline
 
-from prompt_user_question import t
-from nl2sql import load_client, get_response
-from utils import clean_SQL_query_driver
+from agent.prompt_user_question import t
+from agent.nl2sql import load_client, get_response
+from agent.utils import clean_SQL_query_driver
 from google.cloud import bigquery
 
 '''

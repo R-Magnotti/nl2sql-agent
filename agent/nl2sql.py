@@ -1,6 +1,6 @@
 import os
 from openai import OpenAI
-from prompt_exemplars import exemplars
+from agent.prompt_exemplars import exemplars
 
 url = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
 model = os.getenv("LLM_MODEL", "llama3.1:8b")
