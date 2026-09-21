@@ -1,7 +1,10 @@
 import os
 from openai import OpenAI
-from agent.prompt_exemplars import exemplars
+from prompt_exemplars import exemplars
 
+'''
+Inference script for MODEL 2: main inference/actor model
+'''
 url = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
 model = os.getenv("LLM_MODEL", "llama3.1:8b")
 api_key = os.getenv("LLM_API_KEY", "ollama")    ## ollama api key for local use
