@@ -13,6 +13,7 @@ OVERALL OUTPUT: llm response to user query
 
 import spacy
 import benepar
+import math
 
 from prompt_user_question import t
 from actor_model import load_client, get_response
@@ -45,7 +46,7 @@ from sentence_transformers import SentenceTransformer
 embed_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
 ## only keep labeled chunks which could contain useful information about SQL query
-gt_labels = ["NP", "PP", "WHNP", "AdvNP"]
+gt_labels = ["NP", "PP", "WHNP", "ADVP"] ## labels from treebank
 chunk_dict = {} ## key: chunk str, value: chunk vector embedding
 
 ## topk, set to taste
@@ -94,12 +95,30 @@ prompt_block = "\n".join(lines)
 
 print(f"\n\nChunks block:\n{prompt_block}")
 
+res, logprobs, messages = ask_critic(client=critic_client, question=prompt, chunks=prompt_block)
+print(res)
+
+served_prompt = "\n".join(m["content"] for m in messages)  ## system + user text, in order
+
+gen_so_far = ""
+for i, logprob_data in enumerate(logprobs):
+    input_to_pass_i = served_prompt + gen_so_far   ## <-- input sequence of fwd pass i
+    print(f"\n--- pass {i} ---")
+    print(f"Input to forward pass {i} \n {input_to_pass_i[-10:]}\n")
+    for topklogprob in logprob_data.top_logprobs:
+        p = math.exp(topklogprob.logprob)
+        print(f"Top k token: {topklogprob.token!r} | Prob: {p:.4f}")
+    gen_so_far += logprob_data.token
+
+## TODO: ambiguity catch / logprobs + clarification loop
+
+
+
 raise SystemExit  
-## TODO: ambiguity catch + clarification loop
+
 ## TODO: send matched (query chunk, col name) pairs to final actor model to generate final SQL qeuery, query against BigQuery, return answer (to user) 
 
-res = ask_critic(client=critic_client, question=prompt, chunks=prompt_block)
-print(res)
+
 
 
 '''

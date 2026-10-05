@@ -8,6 +8,8 @@ import os
 import numpy as np
 from dotenv import load_dotenv
 from google.cloud import bigquery
+import sys
+import psycopg  ## for postgresql operation in python
 
 ## embedding model
 from sentence_transformers import SentenceTransformer
@@ -45,12 +47,18 @@ texts = [f"{n}: {d}" for n, d in zip(col_names, col_descs)]
 ## normalizes the len to L2 norm len of 1, making cos similarity faster
 vecs = embed_model.encode(texts, normalize_embeddings=True) 
 
+''' new way of saving vecs in pgvector '''
+
+
+''' old way of saving vecs in npz file '''
 ## col_names[i], col_descs[i], joint embedding
-np.savez_compressed("column_catalog.npz", col_names=np.array(col_names), col_descs=np.array(col_descs), embeddings=vecs)
-print(f"\nsaved {len(col_names)} columns to column_catalog.npz")
+# np.savez_compressed("column_catalog.npz", col_names=np.array(col_names), col_descs=np.array(col_descs), embeddings=vecs)
+# print(f"\nsaved {len(col_names)} columns to column_catalog.npz")
 
 
 
+
+sys.exit()
 ## read it back and check it
 d = np.load("column_catalog.npz")
 assert len(d["col_names"]) == len(d["col_descs"]) == len(d["embeddings"]), "arrays misaligned"

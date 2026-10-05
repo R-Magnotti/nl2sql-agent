@@ -53,3 +53,5 @@ Chunks:
 
 Output:
 '''
+
+## add /no_think before output when using qwen models
