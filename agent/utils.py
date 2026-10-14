@@ -1,8 +1,9 @@
 import re
 from pathlib import Path
-
 import numpy as np
 from sentence_transformers import SentenceTransformer
+import re
+import sqlglot
 
 ## this will add DATABASE. prefix to all FROM clauses
 # TODO: fails for CTEs, maybe better to use sqglot in future ...
@@ -44,3 +45,17 @@ def vector_search(chunk_vec:str, k):
 
     ## .tolist() to hand back real python strs
     return col_names[top].tolist()
+
+## to extract critic model output pairs (number, letter),
+# number is the input segment number (can get back original user input text using "chunks" variable)
+# letter is the output most relevant schema option
+def get_critic_picks(reply):
+    return re.findall(r"(\d+) -> ([A-C])", reply)
+
+## verify the sql generation model output is valid sql
+def is_valid_sql(sql):
+    try:
+        tree = sqlglot.parse_one(sql, read="bigquery")
+    except sqlglot.errors.SqlglotError:
+        return False
+    return isinstance(tree, sqlglot.exp.Select)

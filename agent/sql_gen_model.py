@@ -13,12 +13,13 @@ def load_client(url=url, api_key=api_key):
     return OpenAI(base_url=url, api_key=api_key)
 
 
-def get_response(client, model=model, question="What color is the sky?"):
+def get_response(client, question, pairs, model=model):
+    matches = "\n".join(f'- "{segment}" -> {column}' for column, segment in pairs)
     response = client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": exemplars},
-            {"role": "user", "content": question},
+            {"role": "user", "content": f"{question}\n\nColumns matched to parts of the question:\n{matches}"},
         ],
         temperature=0
     )

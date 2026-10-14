@@ -16,9 +16,10 @@ import benepar
 import math
 
 from prompt_user_question import t
-from actor_model import load_client, get_response
-from utils import clean_SQL_query_driver, vector_search
+import sql_gen_model
+from utils import clean_SQL_query_driver, vector_search, get_critic_picks, is_valid_sql
 from google.cloud import bigquery
+from critic_model import load_client as load_critic_client, get_response as ask_critic
 
 '''
 Components:
@@ -31,7 +32,7 @@ Components:
 '''
 step 1: get the prompt 
 '''
-ollama_client = load_client()
+ollama_client = sql_gen_model.load_client()
 bq_client = bigquery.Client()
 
 ## read from prompt.py file
@@ -67,8 +68,6 @@ for c in sent._.constituents:   ## each c is a span
     chunk_dict[c] = topk
     
 ## pass constituent chunks and topk matched for each to judge prompt
-from critic_model import load_client as load_critic_client, get_response as ask_critic
-
 critic_client = load_critic_client()
 letters = "ABC"   ## k candidates per chunk, num letters = k
 
@@ -100,6 +99,7 @@ print(res)
 
 served_prompt = "\n".join(m["content"] for m in messages)  ## system + user text, in order
 
+## loop through critic model output for token log probs
 gen_so_far = ""
 for i, logprob_data in enumerate(logprobs):
     input_to_pass_i = served_prompt + gen_so_far   ## <-- input sequence of fwd pass i
@@ -109,16 +109,39 @@ for i, logprob_data in enumerate(logprobs):
         p = math.exp(topklogprob.logprob)
         print(f"Top k token: {topklogprob.token!r} | Prob: {p:.4f}")
     gen_so_far += logprob_data.token
+    
+##TODO: next would be ambiguity detection using logprobs, but skipping for right now
 
-## TODO: ambiguity catch / logprobs + clarification loop
+## use regex to extract critic output top pick for each user input segment
+critic_picks = get_critic_picks(res)
 
+print("\n")
+pairs = []
+for number, letter in critic_picks:
+    chunk, topk = chunks[int(number) - 1]
+    column = topk[letters.index(letter)]    ## "A" -> 0, "B" -> 1, "C" -> 2
+    pairs.append((column, chunk.text))
+    print(pairs[-1])
 
+## NOTE: SKIPS ambiguity detection and clarification loop for now...focusing on sql gen pipeline first
+
+## send matched (query chunk, col name) pairs list to sql gen model to generate final SQL qeuery, query against BigQuery, return answer (to user) 
+sql = sql_gen_model.get_response(client=ollama_client, question=prompt, pairs=pairs)
+print("\n", sql)
+
+## use sqlglot to make sure output is valid
+valid = is_valid_sql(sql)
+
+## TODO: handle if not case
+
+## if sql is valid, run against bigquery
+if valid:
+    query_res = bq_client.query(sql)
+    for row in query_res.result():
+        print(row)
+    
 
 raise SystemExit  
-
-## TODO: send matched (query chunk, col name) pairs to final actor model to generate final SQL qeuery, query against BigQuery, return answer (to user) 
-
-
 
 
 '''
