@@ -1,12 +1,18 @@
 import re
+import json
 from pathlib import Path
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import re
 import sqlglot
 
+with open(Path(__file__).resolve().parent / "config.json") as f:
+    config = json.load(f)
+
+THRESHOLD = config["threshold"]
+TOP_K = config["top_k"]
+
 ## this will add DATABASE. prefix to all FROM clauses
-# TODO: fails for CTEs, maybe better to use sqglot in future ...
 def add_table_prefix(query: str, prefix: str = "nl2sql_dev") -> str:
     pattern = re.compile(
         r'\b(FROM|JOIN)(\s+)'   # the keyword + whitespace
@@ -59,3 +65,11 @@ def is_valid_sql(sql):
     except sqlglot.errors.SqlglotError:
         return False
     return isinstance(tree, sqlglot.exp.Select)
+
+## in: dict of tokens and their probs, e.g. {"A": 0.02, "B": 0.90, "C": 0.03, "X": 0.05}
+## out: True if ambiguous, else False
+## function: judge if top 1 token prob is within THRESHOLD (from config file) of top 2 token prob
+def judge_ambiguous(target_tokens):
+    top_1, top_2 = sorted(target_tokens.values(), reverse=True)[:2]
+    return top_1 - top_2 <= THRESHOLD
+    
