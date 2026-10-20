@@ -22,7 +22,7 @@ The end goal is the ambiguity layer. Right now, for example, the agent silently 
 Ask it a question:
 
 ```bash
-python agent/RAG_coordinator.py
+python -m agent.RAG_agent
 ```
 
 Output:
@@ -32,7 +32,7 @@ Cleaned SQL query: SELECT SUM(total_revenue) FROM nl2sql_dev.agg_monthly_product
 Row((671247.12,), {'f0_': 0})
 ```
 
-The question lives in `agent/Prompt.py` for now. Edit it, rerun.
+The question lives in `agent/prompt_user_question.py` for now. Edit it, rerun.
 
 And here's the representative example of ambiguity, straight from the warehouse:
 
@@ -55,6 +55,31 @@ fiscal     636233.29
 
 Same question, but the results are ~$6K apart. But both make sense. An agent that picks one without asking is making a guess.
 
+
+## ⚙️ How it works
+
+1. **Preprocess.** For every warehouse column, embed one string built from its table name, column name, and description with `all-MiniLM-L6-v2`, and store the vector in `pgvector`. MiniLM is chosen for being small and fast: retrieval only has to get the right column into the top-k, and the judge makes the actual call.
+2. **Query.** The user asks a natural language question. 
+3. **Embed.** Extract the noun phrase (NP) from the question and embed it with the same model.
+4. **Retrieve.** `pgvector` returns the top-k most similar columns in a single indexed cosine similarity query. The shortlist ranks candidates for the judge.
+5. **Judge.** A small instruction-tuned model (qwen3-4b) sees the NP and the shortlist as explicitly lettered options, one letter per column, plus a letter for `AMBIGUOUS` and `NONE` (same as `REFUSE`). It replies with one letter at temperature 0 and max_tokens 1. The first-token logprobs form a distribution over the options, and the margin between the top two letters acts as a confidence gate. If there is only a marginal difference ("low margin") between the top options, the decision is downgraded to ambiguous. An illegal first token is treated as malformed and retried.
+6. **Route.** A "high margin" column letter implies `CLEAR` and sends the query and matched column to SQL generation (llama3.1:8b). `AMBIGUOUS` triggers a clarifying question back to the user. `NONE` refuses and reports that nothing in the schema matches.
+
+
+## 🧪 Tests and evals
+
+Two directories, because they cost very different things to run.
+
+```bash
+pytest                  ## tests/ — seconds, no downloads, no server
+pytest evals -v         ## evals/ — ~11GB of embedder weights, hundreds of ollama calls
+python -m evals.report  ## the same evals as a table instead of pass/fail
+```
+
+`tests/` asks whether the code still works. `evals/` asks which model the agent
+should use for the decide-or-ask call, over 41 gold-labelled cases; the write-up
+is in [DECISIONS.md](DECISIONS.md) and the harness in [evals/README.md](evals/README.md).
+
 ## ⬇️ Installation
 
 You need: a GCP project with a BigQuery dataset (free sandbox works), gcloud auth, a dbt profile pointing at it, and [Ollama](https://ollama.com).
@@ -76,7 +101,7 @@ Run the agent:
 ollama serve                 ## in its own terminal
 ollama pull llama3.1:8b      ## only run one time, should be ~5 GB
 pip install openai google-cloud-bigquery
-python agent/RAG_coordinator.py
+python -m agent.RAG_agent
 ```
 
 Different model or backend: set `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`.
