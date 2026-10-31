@@ -36,7 +36,7 @@ def deliberate(question, segment_topk_dict):
 
     prompt_block = "\n".join(lines)
 
-    print(f"\n\nChunks block:\n{prompt_block}")
+    print(f"\n\Constituency phrase cos topk matches:\n{prompt_block}")
 
     ## step 4: detect in-out pair ambiguities
     res, logprobs, messages = ask_critic(client=critic_client, question=question, chunks=prompt_block)
@@ -62,8 +62,10 @@ def deliberate(question, segment_topk_dict):
         if logprob_data.token.strip() not in target_tokens:
             continue
 
-        print(f"\n--- pass {i} ---")
-        print(f"Input to forward pass {i} \n {input_to_pass_i[-10:]}\n")
+        # print(f"\n--- pass {i} ---")
+        print(f"\n------------------")
+        # print(f"Input: \n {input_to_pass_i[-20:]}\n")
+        print(f"Input: \n {input_to_pass_i}\n")
 
         for top_i in logprob_data.top_logprobs:
             p = math.exp(top_i.logprob)
