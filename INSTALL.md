@@ -7,7 +7,7 @@ conda create -n nl2sql python=3.11 && conda activate nl2sql
 pip install -r requirements.txt
 ```
 
-That covers every Python dependency. Three things it can't.
+That covers every Python dependency, including the spaCy English model. Four things it can't.
 
 ## Ollama
 
@@ -30,6 +30,20 @@ comparison still works.
 Pulled from HuggingFace on first use into `~/.cache/huggingface` — no action
 needed, but budget ~11 GB and a slow first run. `Qwen3-Embedding-4B` alone is
 ~8 GB and loads in bfloat16 to fit in 16 GB of RAM.
+
+## Parsing model (benepar)
+
+`agent/NLU.py` splits questions with benepar's English parser. The model is a
+download, not a pip package. Run once:
+
+```bash
+python -c "import benepar; benepar.download('benepar_en3')"
+```
+
+Keep `transformers` and `sentence-transformers` below 5. benepar calls a
+tokenizer method that transformers 5 removed, and the resulting
+`AttributeError: T5Tokenizer has no attribute build_inputs_with_special_tokens`
+looks like a missing download, but it isn't. `requirements.txt` already caps both.
 
 ## BigQuery
 

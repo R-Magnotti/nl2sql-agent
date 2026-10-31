@@ -8,7 +8,15 @@ import benepar
 from agent_utils import embed_model, vector_search
 
 ## only keep labeled chunks which could contain useful information about SQL query
-gt_labels = ["NP", "PP", "WHNP", "ADVP"] ## labels from treebank
+## labels from treebank
+gt_labels = {"NP",      ## noun phrase
+             "PP",      ## prepositional phrase
+             "WHNP",    ## wh-noun phrase "what", "which", etc
+             "ADVP"}    ## adverb phrase
+noun_tags = {"NN",      ## singular noun
+             "NNS",     ## plural noun
+             "NNP",     ## singular proper noun "Amazon"
+             "NNPS"}    ## plural proper noun "Americans"
 
 ## models load once at import, not once per NLU() call
 ## chunk user query into CONSTITUENTS (not NPs, see DECISIONS.md for more detail)
@@ -26,6 +34,15 @@ def NLU(question, k):
 
     ## extract each question segment, embed it, then vector search
     for question_segment in sent._.constituents:   ## each question_segment is a spacy span
+        
+        ## if segment is a phrase
+        if question_segment._.labels:
+            if not gt_labels & set(question_segment._.labels):
+                continue
+        ## if segment is a bare word "the"
+        elif question_segment[0].tag_ not in noun_tags:   # bare word, check its POS tag
+            continue
+        
         print(f"Constituent: {question_segment.text}, Label: {question_segment._.labels}")
         embedded_segment = embed_model.encode(question_segment.text)
         topk = vector_search(embedded_segment, k)

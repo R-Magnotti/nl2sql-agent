@@ -99,9 +99,11 @@ Run the agent:
 
 ```bash
 ollama serve                 ## in its own terminal
-ollama pull llama3.1:8b      ## only run one time, should be ~5 GB
-pip install openai google-cloud-bigquery
-python -m agent.RAG_agent
+ollama pull llama3.1:8b      ## SQL + answer model, ~5 GB, one time
+ollama pull gemma3:1b        ## critic model, ~800 MB, one time
+pip install -r requirements.txt
+python -c "import benepar; benepar.download('benepar_en3')"   ## parser model, one time
+cd agent && python RAG_agent.py
 ```
 
 Different model or backend: set `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`.

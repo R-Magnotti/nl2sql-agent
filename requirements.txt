@@ -6,9 +6,14 @@
 # including osx-arm64 wheel builds that only reinstall on Apple Silicon.
 
 # --- embedding models ------------------------------------------------------
-sentence-transformers>=6.0.0     # CrossEncoder + processor_kwargs API
+sentence-transformers>=4.1.0,<5  # <5 bc 6.x hard-requires transformers>=5
 torch>=2.13.0                    # MPS/Metal backend on Apple Silicon
-transformers>=5.16.1             # `dtype` kwarg; `processor_kwargs` replaced `tokenizer_kwargs`
+transformers>=4.57.6,<5          # <5 bc benepar calls a tokenizer method 5.x removed
+
+# --- question parsing (agent/NLU.py) ---------------------------------------
+spacy>=3.8.14
+benepar>=0.2.0                   # constituency parser; its model downloads separately, see INSTALL.md
+en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 
 # --- ollama judges ---------------------------------------------------------
 openai>=3.0.0                    # OpenAI-compatible client pointed at ollama, not openai.com
@@ -17,6 +22,7 @@ openai>=3.0.0                    # OpenAI-compatible client pointed at ollama, n
 google-cloud-bigquery>=3.42.3
 dbt-bigquery>=1.12.0             # dbt_models/; pins hard, see INSTALL.md if it fights torch
 python-dotenv>=1.2.2
+sqlglot>=30.15.0                 # checks the generated SQL parses before it runs
 
 # --- output + tests --------------------------------------------------------
 tabulate>=0.10.0
