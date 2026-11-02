@@ -5,7 +5,7 @@ clarification calls (DECISIONS.md: "Code for the fixed steps, an agent for the c
 check_ambiguity(question): chunk the question, vector search each chunk, and have the critic judge each one.
     reports the evidence and never asks anyone
 answer_question(question, columns): takes the agent's phrase -> column picks, generates the sql,
-    checks it with sqlglot, runs it on bigquery
+    checks it with sqlglot and against the column catalog (one retry for wrong-table columns), runs it on bigquery
 
 neither one raises: a stage that fails comes back as error = {"stage": ..., "message": ...}
 '''
@@ -14,7 +14,7 @@ import json
 
 from prompt_user_question import t
 import generator_model
-from agent_utils import is_valid_sql, get_columns_used, TOP_K
+from agent_utils import is_valid_sql, get_columns_used, wrong_table_columns, TOP_K
 from NLU import NLU
 from deliberate import deliberate
 from google.cloud import bigquery
@@ -53,24 +53,41 @@ def check_ambiguity(question):
 
 ## in: user question (str), columns: the agent's phrase -> column picks, e.g. {"Which quarter": "dim_date.fiscal_quarter"}
 ## out: {"status": "answered" or "error", "sql", "columns_used": the columns sqlglot finds in the sql,
-##       "rows": list of dicts, "error": None or {"stage", "message"}}
+##       "column_fixes": what the first sql got wrong, if it needed the retry, "rows": list of dicts,
+##       "error": None or {"stage", "message"}}
 def answer_question(question, columns):
-    result = {"status": "error", "sql": None, "columns_used": [], "rows": [], "error": None}
+    result = {"status": "error", "sql": None, "columns_used": [], "column_fixes": [], "rows": [], "error": None}
 
-    try:
-        pairs = [(column, phrase) for phrase, column in columns.items()]   ## generator_model takes (column, phrase)
-        ## content can come back None, "" fails validation below with sqlglot's message instead
-        result["sql"] = generator_model.get_response(client=ollama_client, question=question, pairs=pairs) or ""
-    except Exception as e:
-        result["error"] = stage_error("generate", e)
-        return result
+    problems = []
+    for attempt in range(2):   ## one retry, only for columns on the wrong table
+        ## get the sql from the generator model, on the retry along with its own sql and what's wrong with it
+        try:
+            pairs = [(column, phrase) for phrase, column in columns.items()]   ## generator_model takes (column, phrase)
+            ## content can come back None, "" fails validation below with sqlglot's message instead
+            result["sql"] = generator_model.get_response(client=ollama_client, question=question, pairs=pairs,
+                                                         previous_sql=result["sql"], problems=problems) or ""
+        except Exception as e:
+            result["error"] = stage_error("generate", e)
+            return result
 
-    ## must parse, and must be a SELECT, before anything runs on bigquery
-    valid, sql_error = is_valid_sql(result["sql"])
-    if not valid:
-        result["error"] = {"stage": "validate", "message": sql_error}
+        ## must parse, and must be a SELECT, before anything runs on bigquery
+        valid, sql_error = is_valid_sql(result["sql"])
+        if not valid:
+            result["error"] = {"stage": "validate", "message": sql_error}
+            return result
+        result["columns_used"] = get_columns_used(result["sql"])
+
+        ## every column has to be in the table the sql reads it from, per the column catalog
+        problems = wrong_table_columns(result["columns_used"])
+        if not problems:
+            break
+        if attempt == 0:
+            result["column_fixes"] = problems   ## kept to see how often the retry fires
+
+    ## still wrong after the retry: stop here instead of sending it to bigquery
+    if problems:
+        result["error"] = {"stage": "columns", "message": "; ".join(problems)}
         return result
-    result["columns_used"] = get_columns_used(result["sql"])
 
     try:
         ## a bigquery Row prints as Row((4,), {'calendar_quarter': 0}) where 0 is a position, dict() gives {'calendar_quarter': 4}

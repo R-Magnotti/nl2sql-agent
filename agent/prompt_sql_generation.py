@@ -35,6 +35,8 @@ agg_fiscal_monthly_product_sales (pre-aggregated: one row = one product per fisc
 
 Prefer the agg_ tables for monthly revenue/units questions; they need no joins. Use fact_sales joined to dims for weekly, retailer-level, or promo questions.
 
+Make absolutely sure that any columns used in the sql are listed above, and belong to the right table.
+
 Data covers calendar years 2024-2025.
 
 Examples:

@@ -91,6 +91,24 @@ def get_columns_used(sql):
         used.add(f"{table}.{column.name}" if table else column.name)
     return sorted(used)
 
+## every real "table.column" in the warehouse, and the tables they belong to
+catalog_columns = set(col_names.tolist())
+catalog_tables = {name.split(".")[0] for name in catalog_columns}
+
+## in: "table.column" names from get_columns_used
+## out: one line per column that isn't in its table, saying where it really lives. empty = all good
+def wrong_table_columns(columns_used):
+    problems = []
+    for name in columns_used:
+        table, _, column = name.rpartition(".")
+        ## bare names (multi-table query) and CTE/subquery aliases can't be checked against the catalog
+        if table not in catalog_tables or name in catalog_columns:
+            continue
+        homes = sorted(c.split(".")[0] for c in catalog_columns if c.split(".")[1] == column)
+        where = f"it is in {', '.join(homes)}" if homes else "and no table has it"
+        problems.append(f"{table} has no column {column}; {where}")
+    return problems
+
 ## in: dict of tokens and their probs, e.g. {"A": 0.02, "B": 0.90, "C": 0.03, "X": 0.05}
 ## out: (True if ambiguous else False, margin = top 1 prob - top 2 prob)
 ## function: judge if top 1 token prob is within THRESHOLD (from config file) of top 2 token prob
