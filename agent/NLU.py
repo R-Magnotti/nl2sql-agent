@@ -25,7 +25,7 @@ nlp.add_pipe("benepar", config={"model": "benepar_en3"})    ## spacy doesn't do 
 
 
 ## in: user question (str), k = number of candidate columns per question segment
-## out: dict, key: question segment (spacy span), value: its topk column names
+## out: dict, key: question segment (spacy span), value: its topk (column name, cosine score) pairs
 def NLU(question, k):
     segment_topk_dict = {}
 
@@ -43,7 +43,6 @@ def NLU(question, k):
         elif question_segment[0].tag_ not in noun_tags:   # bare word, check its POS tag
             continue
         
-        print(f"Constituent: {question_segment.text}, Label: {question_segment._.labels}")
         embedded_segment = embed_model.encode(question_segment.text)
         topk = vector_search(embedded_segment, k)
         segment_topk_dict[question_segment] = topk

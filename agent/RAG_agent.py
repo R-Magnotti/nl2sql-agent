@@ -1,112 +1,129 @@
 '''
-this script should be called by nl2sql driver, and act as the full RAG pipeline
+the two tools the agent calls. the fixed steps stay as code in here, and the agent makes the
+clarification calls (DECISIONS.md: "Code for the fixed steps, an agent for the clarification calls")
 
-purpose of this script is to (steps):
-1. chunk user query + vector embed user input query
-2. vector search knowledge base for matching terms
-3. inject matches into judge prompt, and run judge LLM
-4. detect in-out pair ambiguities
-5. ask user for additional targeted disambiguating information
-    Loop steps 2-4 until no ambiguities or no matches
-6. pass judge-approved output into downstream inference LLM
-7. turn the query result into a plain english answer for the user
+check_ambiguity(question): chunk the question, vector search each chunk, and have the critic judge each one.
+    reports the evidence and never asks anyone
+answer_question(question, columns): takes the agent's phrase -> column picks, generates the sql,
+    checks it with sqlglot and against the column catalog (one retry for wrong-table columns), runs it on bigquery
 
-OVERALL INPUT: user query
-OVERALL OUTPUT: llm response to user query
+neither one raises: a stage that fails comes back as error = {"stage": ..., "message": ...}
 '''
+
+import json
 
 from prompt_user_question import t
 import generator_model
-from agent_utils import clean_SQL_query_driver, get_critic_picks, is_valid_sql, TOP_K
+from agent_utils import is_valid_sql, get_columns_used, wrong_table_columns, TOP_K
 from NLU import NLU
 from deliberate import deliberate
-from NLG import NLG_clarifying_question, NLG_final_answer
 from google.cloud import bigquery
 
-'''
-Components:
-- knowledge base
-- retriever + ranker
-- coordinator
-- generator
-'''
-
-
-'''
-step 1: get the prompt
-'''
+## clients load once at import, not once per call
 ollama_client = generator_model.load_client()
 bq_client = bigquery.Client()
 
 
+## the error both tools hand back instead of raising: which stage failed, and why
+def stage_error(stage, e):
+    return {"stage": stage, "message": f"{type(e).__name__}: {e}"}
+
+
 ## in: user question (str)
-## out: plain english answer for the user (str), or None if the sql wasn't valid
-def run(prompt):
-    prompt = prompt.strip()   ## benepar's retokenizer asserts on whitespace-only tokens
-    print(f'Q: {prompt}')
+## out: {"question", "phrases": one entry per chunk (built in deliberate), "error": None or {"stage", "message"}}
+def check_ambiguity(question):
+    question = question.strip()   ## benepar's retokenizer asserts on whitespace-only tokens
+    result = {"question": question, "phrases": [], "error": None}
 
-    '''
-    step 2: query knowledge base
-    '''
-    ## key: question segment (spacy span), value: its topk column names
-    segment_topk_dict = NLU(prompt, TOP_K)
+    try:
+        ## key: question segment (spacy span), value: its topk (column name, cosine score) pairs
+        segment_topk_dict = NLU(question, TOP_K)
+    except Exception as e:
+        result["error"] = stage_error("nlu", e)
+        return result
 
-    '''
-    steps 3-4: critic picks a column for each question segment, then sort picks into ambiguous / clear / clear no match
-    '''
-    ambiguous_segments, clear_matches, no_match_segments = deliberate(prompt, segment_topk_dict)
+    try:
+        *_, phrases = deliberate(question, segment_topk_dict)   ## the 3 buckets in front are for the notebook
+        result["phrases"] = phrases
+    except Exception as e:
+        result["error"] = stage_error("deliberate", e)
 
-    '''
-    step 5: ask user for additional targeted disambiguating information
-    '''
-    if len(ambiguous_segments) != 0: ## have some ambiguities to resolve
-        ## only want to run this ONCE so as not to inundate user with questions
-
-        ## effectively loop steps 2-4 until no ambiguities or no matches
-        print(f'\n-----------\nAmbiguities detected, starting clarification loop ...')
-
-        ## NLG writes one clarifying question that covers all ambiguities
-        clarifying_question = NLG_clarifying_question(prompt, ambiguous_segments)
-        print(clarifying_question)
-
-        ## let the user answer the clarifying question
-        user_answer = input("> ").strip()   ## benepar asserts on whitespace-only input
-
-        ## rerun steps 2-4 once, with the user's answer added to the question
-        if user_answer:
-            prompt = f"{prompt} {user_answer}"
-            segment_topk_dict.update(NLU(user_answer, TOP_K))   ## step 2 only needs the new words
-            ambiguous_segments, clear_matches, no_match_segments = deliberate(prompt, segment_topk_dict)
-
-    ## if no ambiguity or already did 1 round of clarification, pipe to sql generator
-    ## send matched (query chunk, col name) pairs list to sql gen model to generate final SQL qeuery, query against BigQuery, return answer (to user)
-    sql = generator_model.get_response(client=ollama_client, question=prompt, pairs=clear_matches)
-    print("\n", sql)
-
-    ## use sqlglot to make sure output is valid
-    valid = is_valid_sql(sql)
-
-    ## TODO: handle if not valid SQL case
-    
-    ## TODO: additional check to make sure SQL schema names are correct
-
-    ## if sql is valid, run against bigquery
-    final_answer = None
-    if valid:
-        query_res = bq_client.query(sql)
-        rows = list(query_res.result())   ## bigquery's row iterator can only be looped once, list() lets us print and pass on
-        for row in rows:
-            print(row)
-
-        '''
-        step 7: turn the result rows into a plain english answer for the user
-        '''
-        final_answer = NLG_final_answer(prompt, sql, rows)
-        print(f"\n{final_answer}")
-
-    return final_answer
+    return result
 
 
-## only runs on `python RAG_agent.py`, not when a notebook imports run()
+## in: user question (str), columns: the agent's phrase -> column picks, e.g. {"Which quarter": "dim_date.fiscal_quarter"}
+## out: {"status": "answered" or "error", "sql", "columns_used": the columns sqlglot finds in the sql,
+##       "column_fixes": what the first sql got wrong, if it needed the retry, "rows": list of dicts,
+##       "error": None or {"stage", "message"}}
+def answer_question(question, columns):
+    result = {"status": "error", "sql": None, "columns_used": [], "column_fixes": [], "rows": [], "error": None}
+
+    problems = []
+    for attempt in range(2):   ## one retry, only for columns on the wrong table
+        ## get the sql from the generator model, on the retry along with its own sql and what's wrong with it
+        try:
+            pairs = [(column, phrase) for phrase, column in columns.items()]   ## generator_model takes (column, phrase)
+            ## content can come back None, "" fails validation below with sqlglot's message instead
+            result["sql"] = generator_model.get_response(client=ollama_client, question=question, pairs=pairs,
+                                                         previous_sql=result["sql"], problems=problems) or ""
+        except Exception as e:
+            result["error"] = stage_error("generate", e)
+            return result
+
+        ## must parse, and must be a SELECT, before anything runs on bigquery
+        valid, sql_error = is_valid_sql(result["sql"])
+        if not valid:
+            result["error"] = {"stage": "validate", "message": sql_error}
+            return result
+        result["columns_used"] = get_columns_used(result["sql"])
+
+        ## every column has to be in the table the sql reads it from, per the column catalog
+        problems = wrong_table_columns(result["columns_used"])
+        if not problems:
+            break
+        if attempt == 0:
+            result["column_fixes"] = problems   ## kept to see how often the retry fires
+
+    ## still wrong after the retry: stop here instead of sending it to bigquery
+    if problems:
+        result["error"] = {"stage": "columns", "message": "; ".join(problems)}
+        return result
+
+    try:
+        ## a bigquery Row prints as Row((4,), {'calendar_quarter': 0}) where 0 is a position, dict() gives {'calendar_quarter': 4}
+        result["rows"] = [dict(row) for row in bq_client.query(result["sql"]).result()]
+    except Exception as e:
+        result["error"] = stage_error("bigquery", e)
+        return result
+
+    result["status"] = "answered"
+    return result
+
+
+## console driver, only runs on `python RAG_agent.py`, not when a notebook or the agent imports the tools
+## you stand in for the agent: pick a number for every phrase the critic couldn't settle
 if __name__ == "__main__":
-    run(t)   ## t is read from prompt_user_question.py
+    report = check_ambiguity(t)   ## t is read from prompt_user_question.py
+    if report["error"]:
+        raise SystemExit(f"check_ambiguity failed at {report['error']['stage']}: {report['error']['message']}")
+
+    ## clear picks go straight in, no_match phrases stay out, ambiguous and unrated ones get asked
+    columns = {}
+    for p in report["phrases"]:
+        if p["verdict"] == "clear":
+            columns[p["phrase"]] = p["pick"]
+        elif p["verdict"] in ("ambiguous", "unrated"):
+            print(f'\n"{p["phrase"]}" is {p["verdict"]}:')
+            for n, c in enumerate(p["candidates"], 1):
+                prob = "" if c["prob"] is None else f", critic {c['prob']:.2f}"
+                print(f"  {n}. {c['column']}  (cosine {c['score']:.2f}{prob})")
+            print("  0. none of these")
+
+            choice = ""
+            while choice not in [str(n) for n in range(len(p["candidates"]) + 1)]:
+                choice = input("> ").strip()
+            if choice != "0":
+                columns[p["phrase"]] = p["candidates"][int(choice) - 1]["column"]
+
+    print(f"\ncolumns: {columns}")
+    print(json.dumps(answer_question(report["question"], columns), indent=2, default=str))   ## default=str: bigquery dates, decimals
