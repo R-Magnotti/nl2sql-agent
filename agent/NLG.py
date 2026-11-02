@@ -22,7 +22,7 @@ def NLG_clarifying_question(question, ambiguous_segments):
     for question_segment, topk in ambiguous_segments:
         lines.append(f'{number}. "{question_segment.text}"')
 
-        for column in topk:
+        for column, score in topk:
             lines.append(f"   - {column}")
         number += 1
 
