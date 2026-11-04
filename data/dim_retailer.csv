@@ -1,0 +1,16 @@
+retailer_key,retailer_code,retailer_name,channel,region,country
+1,R101,MegaMart,Mass,North America,United States
+2,R102,ShopRight,Grocery,North America,United States
+3,R103,ValueClub,Club,North America,United States
+4,R104,QuickDrug,Drug,North America,Canada
+5,R105,Cartly,eCommerce,North America,United States
+6,R106,SuperAhorro,Mass,Latin America,Mexico
+7,R107,MercadoAzul,Grocery,Latin America,Brazil
+8,R108,TiendaLista,eCommerce,Latin America,Colombia
+9,R109,EuroMarkt,Mass,Europe,Germany
+10,R110,Bonmarche,Grocery,Europe,France
+11,R111,PharmaPlus,Drug,Europe,United Kingdom
+12,R112,AsiaMart,Mass,Asia-Pacific,India
+13,R113,OceanRetail,Grocery,Asia-Pacific,Australia
+14,R114,SwiftBasket,eCommerce,Asia-Pacific,Japan
+15,R115,SaharaStores,Mass,Africa-Eurasia,Turkey
