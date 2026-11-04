@@ -28,3 +28,7 @@ sqlglot>=30.15.0                 # checks the generated SQL parses before it run
 tabulate>=0.10.0
 tqdm>=4.70.0
 pytest>=9.1.1
+
+#
+psycopg[binary] >= 3.3.6
+pgvector >= 0.5.1

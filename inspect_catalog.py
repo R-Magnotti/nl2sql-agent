@@ -1,20 +1,31 @@
 '''
-Quick look at a pre-computed column_catalog.npz, without re-running the expensive
+Quick look at the column_catalog table in postgres, without re-running the expensive
 BigQuery + encoding pipeline in precompute_col_embeddings.py.
 
 - standalone on purpose: importing precompute_col_embeddings would re-run its module-level logic.
 '''
 
+import os
 import numpy as np
+import psycopg
+from dotenv import load_dotenv
+from pgvector.psycopg import register_vector
 
-catalog = "column_catalog.npz"
 n_preview = 10
 
-d = np.load(catalog)
+load_dotenv() ##read from .env file
 
-col_names, col_descs, embeddings = d["col_names"], d["col_descs"], d["embeddings"]
+conn = psycopg.connect(os.environ["POSTGRES_URL"])
+register_vector(conn)   ## embeddings come back as pgvector Vector objects
+rows = conn.execute("SELECT name, description, embedding FROM column_catalog ORDER BY id").fetchall()
+conn.close()
 
-print(f"{catalog}: arrays={list(d.files)}")
+if not rows:
+    raise SystemExit("column_catalog is empty, run precompute_col_embeddings.py first")
+
+col_names, col_descs, embeddings = zip(*rows)
+embeddings = np.array([vec.to_numpy() for vec in embeddings])
+
 print(f"{len(col_names)} columns with names, embeddings {embeddings.shape} {embeddings.dtype}")
 
 ## with normalize_embeddings=True these should all be ~1.0
@@ -27,5 +38,3 @@ print(f"{n_described}/{len(col_descs)} columns have a description\n")
 
 for name, desc in zip(col_names[:n_preview], col_descs[:n_preview]):
     print(f"{name}\t{desc}")
-
-
