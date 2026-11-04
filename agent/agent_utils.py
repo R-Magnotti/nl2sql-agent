@@ -1,7 +1,10 @@
 import re
+import os
 import json
 from pathlib import Path
-import numpy as np
+from dotenv import load_dotenv
+import psycopg
+from pgvector.psycopg import register_vector
 from sentence_transformers import SentenceTransformer
 import re
 import sqlglot
@@ -28,29 +31,30 @@ def clean_SQL_query_driver(query: str):
     ## fix FROM clause prefixes
     return add_table_prefix(query)
 
-''' 
-func to search pre-computed col name embeddings and return topk most cosine similar results
-input: user input query constituent / chunk : str, k : int
+'''
+func to search the column catalog in postgres (pgvector) and return topk most cosine similar results
+input: embedded user input query constituent / chunk (vector from embed_model), k : int
 output: topk (column name, cosine score) pairs, best first : [(col_name:str, score:float), ..., (col_name:str, score:float)]
 '''
-## precomputed col embeddings + model load once at import, not once per call. Vector_search runs for every
-## constituent in the question, and re-reading the npz each time is a lot of overhead.
+## postgres connection + model load once at import, not once per call. Vector_search runs for every
+## constituent in the question, and opening a new connection each time is a lot of overhead.
 
-## path is relative to THIS file, not the pwd
-catalog = np.load(Path(__file__).resolve().parent.parent / "column_catalog.npz")
-col_names, embeddings = catalog["col_names"], catalog["embeddings"]
+## .env is at the repo root, next to precompute_col_embeddings.py. path is relative to THIS file, not the pwd
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+## autocommit: each query is its own transaction. without it the agent holds a lock on column_catalog
+## between searches, and the TRUNCATE in precompute_col_embeddings.py waits until the agent exits
+pg_conn = psycopg.connect(os.environ["POSTGRES_URL"], autocommit=True)
+register_vector(pg_conn)   ## lets psycopg send numpy arrays as pgvector vectors
 
 embed_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
-def vector_search(chunk_vec:str, k):
-    ## precomputed col embedding vectors are already L2-normalized, so dot product (the "@" sign)=cosine similarity 
-    scores = embeddings @ chunk_vec
-
-    ## argsort is ascending, so flip it and take the front k
-    top = np.argsort(scores)[::-1][:k]
-
-    ## .tolist() to hand back python strs and floats
-    return list(zip(col_names[top].tolist(), scores[top].tolist()))
+def vector_search(chunk_vec, k):
+    ## <=> is cosine distance (1 - cosine similarity), so the closest columns come first
+    return pg_conn.execute(
+        "SELECT name, 1 - (embedding <=> %(vec)s) FROM column_catalog ORDER BY embedding <=> %(vec)s LIMIT %(k)s",
+        {"vec": chunk_vec, "k": k},
+    ).fetchall()
 
 ## to extract critic model output pairs (number, letter),
 # number is the input segment number (can get back original user input text using "chunks" variable)
@@ -91,8 +95,9 @@ def get_columns_used(sql):
         used.add(f"{table}.{column.name}" if table else column.name)
     return sorted(used)
 
-## every real "table.column" in the warehouse, and the tables they belong to
-catalog_columns = set(col_names.tolist())
+## every real "table.column" in the warehouse, and the tables they belong to.
+## read once at import, so restart the agent after re-running precompute_col_embeddings.py
+catalog_columns = {name for (name,) in pg_conn.execute("SELECT name FROM column_catalog")}
 catalog_tables = {name.split(".")[0] for name in catalog_columns}
 
 ## in: "table.column" names from get_columns_used
@@ -116,4 +121,3 @@ def judge_ambiguous(target_tokens):
     top_1, top_2 = sorted(target_tokens.values(), reverse=True)[:2]
     margin = top_1 - top_2
     return margin <= THRESHOLD, margin
-    

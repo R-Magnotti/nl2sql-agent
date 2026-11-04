@@ -63,3 +63,11 @@
 **Decision:** My own critic and SQL model on Ollama, each with its own setting so I can swap either one.
 **Why:** An agent’s model can’t pass token probabilities over MCP. Running locally means no question, schema or row goes to an outside AI provider.
 **Tradeoffs:** The company needs hardware to run the models.
+
+
+## 📝 Column catalog moves from an .npz file to pgvector
+**Context:** The two-stage design above has the column embeddings in pgvector as step 1, but the prototype kept them in `column_catalog.npz`. The agent loaded every vector into memory and ranked them with a numpy dot product.
+**Decision:** The precompute script writes the catalog to a `column_catalog` table in Postgres with the name, description and embedding, and `vector_search` ranks them with one query ordered by cosine distance. The table's defined in the precompute script too, and every run rebuilds it in one transaction instead of upserting.
+**Why:** The search runs in the database, so the agent doesn't hold the whole catalog in memory. An HNSW index can go on once the catalog hits thousands of columns, and filters like leaving out the `_raw` tables go in the same query. The catalog's one table the precompute script writes and the agent reads, so there's no binary file sitting in the repo.
+**Evidence:** Before deleting the .npz I ran the 41 probes from `evals/dataset.py` through both searches with the same query embedding. Both catalogs had the same 74 columns and vectors, and all 41 probes came back with the same top 3 columns in the same order with matching scores. The old file's in git at `7428f19`.
+**Tradeoffs:** The agent needs Postgres running and `POSTGRES_URL` set. The wrong-table check reads column names once at import, so the agent has to restart after a rebuild. A full rebuild's fine at 74 rows. At scale I'd keep a hash per row, embed only what changed, upsert by name and delete what's gone.

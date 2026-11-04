@@ -63,9 +63,13 @@ def answer_question(question, columns):
         ## get the sql from the generator model, on the retry along with its own sql and what's wrong with it
         try:
             pairs = [(column, phrase) for phrase, column in columns.items()]   ## generator_model takes (column, phrase)
+
             ## content can come back None, "" fails validation below with sqlglot's message instead
+            ## generate the sql
             result["sql"] = generator_model.get_response(client=ollama_client, question=question, pairs=pairs,
                                                          previous_sql=result["sql"], problems=problems) or ""
+                                                         
+        ## if the sql generation process fails/errors, return the error
         except Exception as e:
             result["error"] = stage_error("generate", e)
             return result

@@ -48,24 +48,28 @@ texts = [f"{n}: {d}" for n, d in zip(col_names, col_descs)]
 vecs = embed_model.encode(texts, normalize_embeddings=True) 
 
 ''' new way of saving vecs in pgvector '''
+from pgvector.psycopg import register_vector
 
+conn = psycopg.connect(os.getenv("POSTGRES_URL"))
+conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+register_vector(conn)   ## lets psycopg send numpy arrays as pgvector vectors
+cursor = conn.cursor()   ## after register_vector: a cursor only gets the adapters its connection had when it was made
+## size comes from the vectors themselves: 384 for all-minilm
+cursor.execute(f"CREATE TABLE IF NOT EXISTS column_catalog (id SERIAL PRIMARY KEY, name TEXT, description TEXT, embedding vector({vecs.shape[1]}))")
+cursor.execute("TRUNCATE column_catalog")   ## full rebuild each run, not another copy on top
+cursor.executemany("INSERT INTO column_catalog (name, description, embedding) VALUES (%s, %s, %s)", [(name, desc, vec) for name, desc, vec in zip(col_names, col_descs, vecs)])
+conn.commit()
+
+## read it back and check it. vectors come back as pgvector Vector objects, .to_numpy() makes them arrays again
+saved = np.array([vec.to_numpy() for (vec,) in cursor.execute("SELECT embedding FROM column_catalog")])
+assert len(saved) == len(col_names), "row count doesn't match the columns embedded"
+assert np.allclose(np.linalg.norm(saved, axis=1), 1.0), "vectors not normalized"
+print(f"ok: {saved.shape[0]} columns, dim {saved.shape[1]}")
+
+cursor.close()
+conn.close()
 
 ''' old way of saving vecs in npz file '''
 ## col_names[i], col_descs[i], joint embedding
 # np.savez_compressed("column_catalog.npz", col_names=np.array(col_names), col_descs=np.array(col_descs), embeddings=vecs)
 # print(f"\nsaved {len(col_names)} columns to column_catalog.npz")
-
-
-
-
-sys.exit()
-## read it back and check it
-d = np.load("column_catalog.npz")
-assert len(d["col_names"]) == len(d["col_descs"]) == len(d["embeddings"]), "arrays misaligned"
-assert d["embeddings"].size, "no vectors saved"
-assert np.allclose(np.linalg.norm(d["embeddings"], axis=1), 1.0), "vectors not normalized"
-print(f"ok: {d['embeddings'].shape[0]} columns, dim {d['embeddings'].shape[1]}")
-
-## test and make sure saved correctly
-with np.load('column_catalog.npz') as data:
-    print("Available arrays:", data.files)
