@@ -1,0 +1,62 @@
+product_key,sku,product_name,brand,category,subcategory,list_price
+1,OC-1001,BrightSmile Whitening Toothpaste 120g,BrightSmile,Oral Care,Toothpaste,4.74
+2,OC-1002,FreshDent Whitening Toothpaste 120g,FreshDent,Oral Care,Toothpaste,2.59
+3,OC-1003,BrightSmile Cavity Shield Toothpaste 120g,BrightSmile,Oral Care,Toothpaste,3.46
+4,OC-1004,FreshDent Cavity Shield Toothpaste 120g,FreshDent,Oral Care,Toothpaste,3.28
+5,OC-1005,BrightSmile Sensitive Relief Toothpaste 100g,BrightSmile,Oral Care,Toothpaste,5.08
+6,OC-1006,FreshDent Sensitive Relief Toothpaste 100g,FreshDent,Oral Care,Toothpaste,4.87
+7,OC-1007,BrightSmile Charcoal Fresh Toothpaste 120g,BrightSmile,Oral Care,Toothpaste,5.62
+8,OC-1008,FreshDent Charcoal Fresh Toothpaste 120g,FreshDent,Oral Care,Toothpaste,2.8
+9,OC-1009,BrightSmile Soft Toothbrush 2-Pack,BrightSmile,Oral Care,Toothbrush,6.8
+10,OC-1010,FreshDent Soft Toothbrush 2-Pack,FreshDent,Oral Care,Toothbrush,3.27
+11,OC-1011,BrightSmile Medium Toothbrush 2-Pack,BrightSmile,Oral Care,Toothbrush,4.97
+12,OC-1012,FreshDent Medium Toothbrush 2-Pack,FreshDent,Oral Care,Toothbrush,7.55
+13,OC-1013,BrightSmile Kids Toothbrush,BrightSmile,Oral Care,Toothbrush,3.24
+14,OC-1014,FreshDent Kids Toothbrush,FreshDent,Oral Care,Toothbrush,4.79
+15,OC-1015,BrightSmile Electric Brush Heads 4-Pack,BrightSmile,Oral Care,Toothbrush,8.85
+16,OC-1016,FreshDent Electric Brush Heads 4-Pack,FreshDent,Oral Care,Toothbrush,7.9
+17,OC-1017,BrightSmile Cool Mint Mouthwash 500ml,BrightSmile,Oral Care,Mouthwash,4.49
+18,OC-1018,FreshDent Cool Mint Mouthwash 500ml,FreshDent,Oral Care,Mouthwash,6.15
+19,OC-1019,BrightSmile Zero Alcohol Mouthwash 500ml,BrightSmile,Oral Care,Mouthwash,7.14
+20,OC-1020,FreshDent Zero Alcohol Mouthwash 500ml,FreshDent,Oral Care,Mouthwash,3.53
+21,OC-1021,BrightSmile Gum Care Mouthwash 250ml,BrightSmile,Oral Care,Mouthwash,7.13
+22,OC-1022,FreshDent Gum Care Mouthwash 250ml,FreshDent,Oral Care,Mouthwash,6.64
+23,PC-1023,PureGlow Moisture Bar Soap 4-Pack,PureGlow,Personal Care,Bar Soap,4.36
+24,PC-1024,SilkTouch Moisture Bar Soap 4-Pack,SilkTouch,Personal Care,Bar Soap,3.62
+25,PC-1025,PureGlow Charcoal Bar Soap 4-Pack,PureGlow,Personal Care,Bar Soap,6.83
+26,PC-1026,SilkTouch Charcoal Bar Soap 4-Pack,SilkTouch,Personal Care,Bar Soap,4.35
+27,PC-1027,PureGlow Hydrating Body Wash 400ml,PureGlow,Personal Care,Body Wash,4.46
+28,PC-1028,SilkTouch Hydrating Body Wash 400ml,SilkTouch,Personal Care,Body Wash,4.48
+29,PC-1029,PureGlow Citrus Body Wash 400ml,PureGlow,Personal Care,Body Wash,8.24
+30,PC-1030,SilkTouch Citrus Body Wash 400ml,SilkTouch,Personal Care,Body Wash,7.02
+31,PC-1031,PureGlow Sensitive Skin Body Wash 400ml,PureGlow,Personal Care,Body Wash,8.04
+32,PC-1032,SilkTouch Sensitive Skin Body Wash 400ml,SilkTouch,Personal Care,Body Wash,7.65
+33,PC-1033,PureGlow Fresh Sport Deodorant,PureGlow,Personal Care,Deodorant,5.41
+34,PC-1034,SilkTouch Fresh Sport Deodorant,SilkTouch,Personal Care,Deodorant,7.38
+35,PC-1035,PureGlow Unscented Deodorant,PureGlow,Personal Care,Deodorant,4.7
+36,PC-1036,SilkTouch Unscented Deodorant,SilkTouch,Personal Care,Deodorant,5.48
+37,PC-1037,PureGlow Lavender Deodorant,PureGlow,Personal Care,Deodorant,6.73
+38,PC-1038,SilkTouch Lavender Deodorant,SilkTouch,Personal Care,Deodorant,5.78
+39,HC-1039,HomeShine Lemon Dish Soap 750ml,HomeShine,Home Care,Dish Soap,5.95
+40,HC-1040,SparkleWave Lemon Dish Soap 750ml,SparkleWave,Home Care,Dish Soap,4.81
+41,HC-1041,HomeShine Ultra Grease Dish Soap 750ml,HomeShine,Home Care,Dish Soap,5.32
+42,HC-1042,SparkleWave Ultra Grease Dish Soap 750ml,SparkleWave,Home Care,Dish Soap,2.68
+43,HC-1043,HomeShine All-Purpose Cleaner 500ml,HomeShine,Home Care,Surface Cleaner,3.91
+44,HC-1044,SparkleWave All-Purpose Cleaner 500ml,SparkleWave,Home Care,Surface Cleaner,4.16
+45,HC-1045,HomeShine Bathroom Cleaner 500ml,HomeShine,Home Care,Surface Cleaner,3.32
+46,HC-1046,SparkleWave Bathroom Cleaner 500ml,SparkleWave,Home Care,Surface Cleaner,3.93
+47,HC-1047,HomeShine Glass Cleaner 500ml,HomeShine,Home Care,Surface Cleaner,3.4
+48,HC-1048,SparkleWave Glass Cleaner 500ml,SparkleWave,Home Care,Surface Cleaner,4.11
+49,HC-1049,HomeShine Liquid Detergent 2L,HomeShine,Home Care,Laundry,14.36
+50,HC-1050,SparkleWave Liquid Detergent 2L,SparkleWave,Home Care,Laundry,11.65
+51,HC-1051,HomeShine Detergent Pods 30ct,HomeShine,Home Care,Laundry,11.7
+52,HC-1052,SparkleWave Detergent Pods 30ct,SparkleWave,Home Care,Laundry,10.1
+53,HC-1053,HomeShine Fabric Softener 1.5L,HomeShine,Home Care,Laundry,10.67
+54,HC-1054,SparkleWave Fabric Softener 1.5L,SparkleWave,Home Care,Laundry,17.37
+55,PN-1055,VitaPaw Adult Dog Dry Food 5kg,VitaPaw,Pet Nutrition,Dry Food,31.2
+56,PN-1056,VitaPaw Puppy Dry Food 3kg,VitaPaw,Pet Nutrition,Dry Food,30.23
+57,PN-1057,VitaPaw Adult Cat Dry Food 3kg,VitaPaw,Pet Nutrition,Dry Food,19.28
+58,PN-1058,VitaPaw Dog Wet Food 12-Pack,VitaPaw,Pet Nutrition,Wet Food,20.94
+59,PN-1059,VitaPaw Cat Wet Food 12-Pack,VitaPaw,Pet Nutrition,Wet Food,12.45
+60,PN-1060,VitaPaw Dental Dog Treats 500g,VitaPaw,Pet Nutrition,Treats,6.28
+61,PN-1061,VitaPaw Cat Treats 200g,VitaPaw,Pet Nutrition,Treats,9.94

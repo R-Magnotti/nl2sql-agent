@@ -15,6 +15,8 @@ venv/
 # generated data
 datagen/output/
 *.csv
+# except the raw data the warehouse is built from (data/README.md)
+!data/*.csv
 
 # dbt
 target/

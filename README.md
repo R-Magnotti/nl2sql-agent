@@ -4,37 +4,39 @@ Ask a data warehouse questions in plain English. When the question is ambiguous,
 
 ## 🌟 Highlights
 
-- A real analytics stack underneath: BigQuery warehouse, dbt-tested star schema, aggregate marts. No toy schema.
-- The raw data ships dirty on purpose: duplicates, nulls, orphan keys, impossible dates. Every fix is an explicit, documented decision.
-- Runs on a local model (llama3.1:8b via Ollama). No API keys, no cost.
-- Swap the model or backend with env vars. Any OpenAI-compatible endpoint works.
+- Asks instead of guessing. A logprob-margin gate flags any phrase in the question that could mean more than one column.
+- An analytics stack underneath, a BigQuery warehouse, a dbt-tested star schema and aggregate marts (no toy schema).
+- The raw data ships dirty on purpose, duplicates, nulls, orphan keys, impossible dates. Every drop in the dbt models is a written rule.
+- Runs on local models through Ollama, llama3.1:8b writes the SQL and gemma3:1b is the critic. No API keys, no cost, and no question, schema or row goes to an outside AI provider.
+- Swap the backend with env vars, any OpenAI-compatible endpoint works.
 
 ## ℹ️ Overview
 
-Many text-to-SQL demos skip the two things that make the problem hard in production: messy data and ambiguous questions. This project builds both in.
+A lot of text-to-SQL demos skip the two things that make the problem hard in production, messy data and ambiguous questions. This project builds both in.
 
-The pipeline goes: English question → local LLM generates BigQuery SQL → a cleanup pass fixes what the model gets wrong → BigQuery executes → answer comes back.
+The question gets split into phrases, each phrase pulls its closest columns from pgvector, and a small critic model picks a column for each one. When the critic's top two picks are too close to call, the phrase gets flagged as ambiguous instead of guessed, and phrased back to the user as a clarification question. Once every phrase has a column, a local LLM writes the BigQuery SQL, sqlglot checks it, and BigQuery runs it.
 
-The end goal is the ambiguity layer. Right now, for example, the agent silently picks the calendar reading of "February," which means it's wrong for anyone who meant fiscal. The plan is a decide-or-ask policy, answer when the readings agree, ask a clarifying question when they'd give different numbers. That's the part I want to improve upon.
+February is the classic case. Calendar February and fiscal February give different numbers, so the right move is to ask which one you mean.
+
+Right now the pieces run as three functions, `check_ambiguity`, `answer_question` and `describe_data`. After the gate fixes they get wrapped as an MCP server, so an agent can run the clarification loop and answer in plain English.
 
 ## 🚀 Usage
 
-Ask it a question:
+Run it from the `agent/` folder.
 
-```bash
-python -m agent.RAG_agent
+```python
+from RAG_agent import check_ambiguity, answer_question
+
+question = "Which quarter had the highest sales?"
+
+check_ambiguity(question)
+answer_question(question, {"Which quarter": "dim_date.fiscal_quarter",
+                           "the highest sales": "fact_sales.sales_amount"})
 ```
 
-Output:
+`check_ambiguity` gives back each phrase with its verdict, its top 3 columns and their scores. `answer_question` takes a column for each phrase and gives back the SQL and the rows.
 
-```
-Cleaned SQL query: SELECT SUM(total_revenue) FROM nl2sql_dev.agg_monthly_product_sales WHERE calendar_year = 2025 AND calendar_month = 2
-Row((671247.12,), {'f0_': 0})
-```
-
-The question lives in `agent/prompt_user_question.py` for now. Edit it, rerun.
-
-And here's the representative example of ambiguity, straight from the warehouse:
+And here's the ambiguity straight from the warehouse.
 
 ```sql
 SELECT 'calendar' AS definition, SUM(total_revenue) AS feb_2024_revenue
@@ -53,38 +55,39 @@ calendar   642274.51
 fiscal     636233.29
 ```
 
-Same question, but the results are ~$6K apart. But both make sense. An agent that picks one without asking is making a guess.
-
+Same question, two answers about $6K apart, and both are fair readings. An agent that picks one without asking is guessing.
 
 ## ⚙️ How it works
 
-1. **Preprocess.** For every warehouse column, embed one string built from its table name, column name, and description with `all-MiniLM-L6-v2`, and store the vector in `pgvector`. MiniLM is chosen for being small and fast: retrieval only has to get the right column into the top-k, and the judge makes the actual call.
-2. **Query.** The user asks a natural language question. 
-3. **Embed.** Extract the noun phrase (NP) from the question and embed it with the same model.
-4. **Retrieve.** `pgvector` returns the top-k most similar columns in a single indexed cosine similarity query. The shortlist ranks candidates for the judge.
-5. **Judge.** A small instruction-tuned model (qwen3-4b) sees the NP and the shortlist as explicitly lettered options, one letter per column, plus a letter for `AMBIGUOUS` and `NONE` (same as `REFUSE`). It replies with one letter at temperature 0 and max_tokens 1. The first-token logprobs form a distribution over the options, and the margin between the top two letters acts as a confidence gate. If there is only a marginal difference ("low margin") between the top options, the decision is downgraded to ambiguous. An illegal first token is treated as malformed and retried.
-6. **Route.** A "high margin" column letter implies `CLEAR` and sends the query and matched column to SQL generation (llama3.1:8b). `AMBIGUOUS` triggers a clarifying question back to the user. `NONE` refuses and reports that nothing in the schema matches.
+1. **Preprocess.** Every warehouse column gets one string built from its table name, column name and description, embedded with `all-MiniLM-L6-v2` and stored in a pgvector table. The descriptions are empty for now, so it's names only. MiniLM is small and fast, retrieval only has to get the right column into the top 3, and the critic makes the actual call.
+2. **Parse.** benepar parses the question and keeps the phrases that can point at a column - noun phrases like "the highest sales", prepositional phrases like "in February 2024", wh-phrases like "which quarter" and adverb phrases like "monthly".
+3. **Retrieve.** Each phrase gets embedded with the same model, and pgvector returns its 3 closest columns by cosine similarity. It's an exact search, at 74 columns there's no need for an index.
+4. **Judge.** One call to a small critic model (gemma3:1b) covers every phrase. Each phrase gets its candidates as lettered options, A to C, plus X for no match, and the critic answers with a letter per phrase at temperature 0. The logprobs at each letter turn into a probability for every option, and when the top two are within 0.1 of each other the phrase is ambiguous.
+5. **Report.** `check_ambiguity` returns every phrase with its verdict (clear, ambiguous or no match), its pick and the scores behind it. Nothing gets asked or guessed here.
+6. **Clarify.** When a phrase comes back ambiguous, the caller asks the user which one they meant, offering only the candidates `check_ambiguity` returned, then passes that pick to `answer_question`. For a no-match phrase, the caller tells the user nothing in the data covers it. Right now the caller is you, in Python. Once the MCP server lands it's the agent, which also decides when more asking stops helping.
+7. **Answer.** `answer_question` takes a column for each phrase. llama3.1:8b writes the SQL with six worked examples in its prompt, sqlglot checks it's valid BigQuery SQL, and BigQuery runs it. A bad query comes back as an error with the stage that failed.
 
-
-## 🧪 Tests and evals
-
-Two directories, because they cost very different things to run.
+## 🧪 Evals
 
 ```bash
-pytest                  ## tests/ — seconds, no downloads, no server
-pytest evals -v         ## evals/ — ~11GB of embedder weights, hundreds of ollama calls
+pytest evals -v         ## ~11GB of embedder weights, hundreds of ollama calls
 python -m evals.report  ## the same evals as a table instead of pass/fail
 ```
 
-`tests/` asks whether the code still works. `evals/` asks which model the agent
-should use for the decide-or-ask call, over 41 gold-labelled cases; the write-up
-is in [DECISIONS.md](DECISIONS.md) and the harness in [evals/README.md](evals/README.md).
+The evals ask which model the agent should use for the decide-or-ask call, over 41 gold-labelled cases. The write-up is in [DECISIONS.md](DECISIONS.md) and the harness is in [evals/README.md](evals/README.md).
 
 ## ⬇️ Installation
 
-You need: a GCP project with a BigQuery dataset (free sandbox works), gcloud auth, a dbt profile pointing at it, and [Ollama](https://ollama.com).
+You need a GCP project with a BigQuery dataset (the free sandbox works), gcloud auth, a dbt profile pointing at it, Docker and [Ollama](https://ollama.com).
 
-Build the warehouse:
+Install the Python packages.
+
+```bash
+pip install -r requirements.txt
+python -c "import benepar; benepar.download('benepar_en3')"   ## parser model, one time
+```
+
+Build the warehouse.
 
 ```bash
 ## load the four CSVs as *_raw tables (one bq load per file)
@@ -95,23 +98,36 @@ cd dbt_models
 dbt build        ## 10 models, 14 tests, dependency order
 ```
 
-Run the agent:
+Set up `.env` at the repo root.
+
+```
+GCP_PROJECT_ID=your-project-id
+BQ_DATASET=nl2sql_dev
+POSTGRES_URL=postgresql://postgres:devpassword@localhost:5433/nl2sql
+```
+
+Build the column catalog.
+
+```bash
+docker compose up -d                  ## postgres with pgvector, port 5433
+python precompute_col_embeddings.py   ## embeds every warehouse column into postgres
+```
+
+Get the models.
 
 ```bash
 ollama serve                 ## in its own terminal
-ollama pull llama3.1:8b      ## SQL + answer model, ~5 GB, one time
+ollama pull llama3.1:8b      ## SQL model, ~5 GB, one time
 ollama pull gemma3:1b        ## critic model, ~800 MB, one time
-pip install -r requirements.txt
-python -c "import benepar; benepar.download('benepar_en3')"   ## parser model, one time
-cd agent && python RAG_agent.py
 ```
 
-Different model or backend: set `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`.
+Then call the functions like in Usage.
+
+For a different model or backend, set `LLM_BASE_URL`, `LLM_MODEL` and `LLM_API_KEY`. The critic and the SQL model read the same ones for now.
 
 ## 📊 The data
 
-Four CSVs in `/data`, generated with a fixed seed, so every number in this README reproduces exactly.
-
+Four synthetic CSVs, with the mess baked in on purpose.
 
 | table        | rows                      | role                                                 |
 | ------------ | ------------------------- | ---------------------------------------------------- |
@@ -120,19 +136,17 @@ Four CSVs in `/data`, generated with a fixed seed, so every number in this READM
 | dim_product  | 61                        | 4 categories, 12 subcategories, 7 brands             |
 | dim_retailer | 15                        | 5 channels, 5 regions                                |
 
-
-The gap between raw and clean comes from 300 duplicate rows, 30 'orphan' product keys (a foreign key pointing at a row that doesn't exist), 2 orphan date keys, and every drop corresponds to a written rule in the dbt models, tested on every build. Mart revenue reconciles to fact revenue exactly ($17,119,610.91). Column definitions and the full mess documented here: `[data/README.md](data/README.md)`.
+The gap between raw and clean comes from 300 duplicate rows, 30 orphan product keys (a foreign key pointing at a row that doesn't exist) and 2 orphan date keys. Every drop is a written rule in the dbt models, and the orphan keys are tested on every build. Mart revenue reconciles to fact revenue exactly ($17,119,610.91). The column definitions and the full mess are in [data/README.md](data/README.md).
 
 ## 🗺️ Roadmap
 
-In order:
+Next up, roughly in order.
 
-1. Few-shot exemplars and prompt hardening, driven by failure modes I hit while building (invented columns, SQLite functions leaking into BigQuery SQL, quoted integer literals)
-2. pgvector RAG over schema docs, so context is retrieved per question instead of dumped into every prompt
-3. The decide-or-ask ambiguity layer
-4. Eval harness with gold queries against the committed dataset
-
-
+1. Gate fixes, a similarity floor so near misses get flagged, the raw tables out of the catalog, and a check that the SQL only uses the picked columns
+2. An MCP server for the three tools, with an agent running the clarification loop
+3. An eval harness, about 40 gold questions with their right answers, run end to end on the old pipeline and the new one4. Column descriptions in the dbt YAML
+5. A semantic layer, so computed metrics like average selling price (revenue over units) get defined once in dbt and the matcher can find them
+6. Airflow, with incremental daily loads
 
 ## 💭 Feedback
 
