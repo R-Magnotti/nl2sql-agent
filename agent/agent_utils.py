@@ -12,8 +12,9 @@ import sqlglot
 with open(Path(__file__).resolve().parent / "config.json") as f:
     config = json.load(f)
 
-THRESHOLD = config["threshold"]
-TOP_K = config["top_k"]
+THRESHOLD = config["check_ambiguity"]["threshold"]
+TOP_K = config["check_ambiguity"]["top_k"]
+RETRIES = config["answer_question"]["retries"]   ## how many times to regenerate sql that puts a column on the wrong table
 
 ## this will add DATABASE. prefix to all FROM clauses
 def add_table_prefix(query: str, prefix: str = "nl2sql_dev") -> str:

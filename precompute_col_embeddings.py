@@ -22,13 +22,14 @@ DATASET = os.getenv("BQ_DATASET", "nl2sql_dev")
 
 client = bigquery.Client(project=PROJECT)
 
-def iter_columns(dataset=DATASET, tables_only=True):
-    """yield (table_name, col_name, col_desc) for every column in the dataset."""
+def get_warehouse_columns(dataset=DATASET, tables_only=True, skip_raw=True):
+    """yield (table_name, col_name, col_desc) for every column in the dataset, skipping views and *_raw tables by default."""
     #  client.list_tables() returns an iterator of TableListItem
     for item in client.list_tables(dataset):    
         
         ## marts are TABLE, staging models are VIEW -- skip the views or you embed the same column twice under two names
-        if tables_only and item.table_type != "TABLE":
+        ## *_raw tables are the CSVs before dbt cleans them -- answers should come from the clean tables, so keep them out of the candidates
+        if (tables_only and item.table_type != "TABLE") or (skip_raw and item.table_id.endswith("_raw")):
             continue
         
         table = client.get_table(item.reference)
@@ -37,7 +38,7 @@ def iter_columns(dataset=DATASET, tables_only=True):
 
 col_names, col_descs = [], []
 
-for table_name, col_name, col_desc in iter_columns():
+for table_name, col_name, col_desc in get_warehouse_columns():
     print(f"{table_name}.{col_name}\t{col_desc}")
     col_names.append(f"{table_name}.{col_name}")    ## so table name is prefix of col name
     col_descs.append(col_desc)  

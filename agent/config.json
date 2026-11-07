@@ -1,4 +1,10 @@
 {
-    "threshold": 0.1,
-    "top_k": 3
+    "warehouse_doc": "data/warehouse.txt",
+    "check_ambiguity": {
+        "threshold": 0.1,
+        "top_k": 3
+    },
+    "answer_question": {
+        "retries": 1
+    }
 }
