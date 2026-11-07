@@ -1,34 +1,44 @@
 '''
-the two tools the agent calls. the fixed steps stay as code in here, and the agent makes the
+the three tools the agent calls. the fixed steps stay as code in here, and the agent makes the
 clarification calls (DECISIONS.md: "Code for the fixed steps, an agent for the clarification calls")
 
 check_ambiguity(question): chunk the question, vector search each chunk, and have the critic judge each one.
     reports the evidence and never asks anyone
 answer_question(question, columns): takes the agent's phrase -> column picks, generates the sql,
-    checks it with sqlglot and against the column catalog (one retry for wrong-table columns), runs it on bigquery
+    checks it with sqlglot and against the column catalog (retries for wrong-table columns, count in config.json), runs it on bigquery
+describe_data(): every table and column the sql can use, the same description the sql model gets
 
-neither one raises: a stage that fails comes back as error = {"stage": ..., "message": ...}
+none of them raises: in the first two, a stage that fails comes back as error = {"stage": ..., "message": ...}
 '''
 
 import json
+import os
 
 from prompt_user_question import t
 import generator_model
-from agent_utils import is_valid_sql, get_columns_used, wrong_table_columns, TOP_K
+from prompt_sql_generation import warehouse
+from agent_utils import is_valid_sql, get_columns_used, wrong_table_columns, TOP_K, RETRIES
 from NLU import NLU
 from deliberate import deliberate
 from google.cloud import bigquery
 
 ## clients load once at import, not once per call
 ollama_client = generator_model.load_client()
-bq_client = bigquery.Client()
+## project from .env (agent_utils loads it), like precompute_col_embeddings.py. an MCP client starts the server
+## with only a few env vars (HOME, PATH, ...), so google can't be left to work out the project on its own
+bq_client = bigquery.Client(project=os.getenv("GCP_PROJECT_ID"))
 
 
 ## the error both tools hand back instead of raising: which stage failed, and why
 def stage_error(stage, e):
     return {"stage": stage, "message": f"{type(e).__name__}: {e}"}
 
-
+''' 
+MCP TOOL - check_ambiguity: 
+- extract the question into chunks
+- for each chunk, find the top k columns that are most similar to the chunk
+- return the chunks, the top k columns for each chunk, the scores, probabilities, and verdicts to the agent
+'''
 ## in: user question (str)
 ## out: {"question", "phrases": one entry per chunk (built in deliberate), "error": None or {"stage", "message"}}
 def check_ambiguity(question):
@@ -51,6 +61,14 @@ def check_ambiguity(question):
     return result
 
 
+''' 
+MCP TOOL - answer_question: 
+- take the user's question and the agent's phrase -> column picks, generate the sql
+- validate the sql with sqlglot
+- check the columns used in the sql against the column catalog
+- run the sql on bigquery
+- return the sql, the columns used, the column fixes if needed, the rows, and the status
+'''
 ## in: user question (str), columns: the agent's phrase -> column picks, e.g. {"Which quarter": "dim_date.fiscal_quarter"}
 ## out: {"status": "answered" or "error", "sql", "columns_used": the columns sqlglot finds in the sql,
 ##       "column_fixes": what the first sql got wrong, if it needed the retry, "rows": list of dicts,
@@ -59,7 +77,7 @@ def answer_question(question, columns):
     result = {"status": "error", "sql": None, "columns_used": [], "column_fixes": [], "rows": [], "error": None}
 
     problems = []
-    for attempt in range(2):   ## one retry, only for columns on the wrong table
+    for attempt in range(1 + RETRIES):   ## retries (config.json) only for columns on the wrong table
         ## get the sql from the generator model, on the retry along with its own sql and what's wrong with it
         try:
             pairs = [(column, phrase) for phrase, column in columns.items()]   ## generator_model takes (column, phrase)
@@ -68,7 +86,7 @@ def answer_question(question, columns):
             ## generate the sql
             result["sql"] = generator_model.get_response(client=ollama_client, question=question, pairs=pairs,
                                                          previous_sql=result["sql"], problems=problems) or ""
-                                                         
+
         ## if the sql generation process fails/errors, return the error
         except Exception as e:
             result["error"] = stage_error("generate", e)
@@ -102,6 +120,18 @@ def answer_question(question, columns):
 
     result["status"] = "answered"
     return result
+
+
+'''
+MCP TOOL - describe_data:
+- return the description of every table and column the sql can use (data/warehouse.txt)
+- the same text the sql generation model gets, so the agent and the sql model work from one schema
+'''
+## in: nothing
+## out: every table and column the sql can use, the same text the sql model gets (data/warehouse.txt, path in
+##      config.json). loaded once at import, so restart the agent after editing the file
+def describe_data():
+    return warehouse
 
 
 ## console driver, only runs on `python RAG_agent.py`, not when a notebook or the agent imports the tools
