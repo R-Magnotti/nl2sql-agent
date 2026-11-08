@@ -7,7 +7,9 @@ Inference script for MODEL 1: llm judge/critic model
 '''
 url = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
 # model = os.getenv("LLM_MODEL", "qwen3:4b")
-model = os.getenv("LLM_MODEL", "gemma3:1b") ## enabling a cheaper non-thinking model just for testing
+## non-thinking on purpose: deliberate reads the probability at each answer letter, so the critic can't reason first.
+## of the judges in evals/, it scored best on the ambiguous cases (9/12)
+model = os.getenv("LLM_MODEL", "qwen3:4b-instruct")
 api_key = os.getenv("LLM_API_KEY", "ollama") 
 
 def load_client(url=url, api_key=api_key):

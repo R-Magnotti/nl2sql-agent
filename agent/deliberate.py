@@ -4,7 +4,7 @@ deliberate = the decide-or-ask policy, and if "ask" a communicative intent of wh
 
 import math
 
-from agent_utils import judge_ambiguous
+from agent_utils import judge_ambiguous, debug_print
 from critic_model import load_client as load_critic_client, get_response as ask_critic
 
 critic_client = load_critic_client()
@@ -37,11 +37,11 @@ def deliberate(question, segment_topk_dict):
 
     prompt_block = "\n".join(lines)
 
-    print(f"\n\Constituency phrase cos topk matches:\n{prompt_block}")
+    debug_print(f"\n\nConstituency phrase cos topk matches:\n{prompt_block}")
 
     ## step 4: detect in-out pair ambiguities
     res, logprobs, messages = ask_critic(client=critic_client, question=question, chunks=prompt_block)
-    print(res)
+    debug_print(res)
 
     served_prompt = "\n".join(m["content"] for m in messages)  ## system + user text, in order
 
@@ -72,18 +72,18 @@ def deliberate(question, segment_topk_dict):
         if logprob_data.token.strip() not in target_tokens:
             continue
 
-        # print(f"\n--- pass {i} ---")
-        print(f"\n------------------")
-        # print(f"Input: \n {input_to_pass_i[-20:]}\n")
-        print(f"Input: \n {input_to_pass_i}\n")
+        # debug_print(f"\n--- pass {i} ---")
+        debug_print(f"\n------------------")
+        # debug_print(f"Input: \n {input_to_pass_i[-20:]}\n")
+        debug_print(f"Input: \n {input_to_pass_i}\n")
 
         for top_i in logprob_data.top_logprobs:
             p = math.exp(top_i.logprob)
-            print(f"Top k token: {top_i.token!r} | Prob: {p:.4f}")
+            debug_print(f"Top k token: {top_i.token!r} | Prob: {p:.4f}")
             token = top_i.token.strip()
             if token in target_tokens:
                 target_tokens[token] += p ## to make sure 'B' and ' B' both count for 'B'
-        print(target_tokens)
+        debug_print(target_tokens)
 
         ## which question segment this letter is for
         current_line = input_to_pass_i.split("\n")[-1]   ## e.g. "19 ->"
@@ -114,16 +114,16 @@ def deliberate(question, segment_topk_dict):
             no_match_segments.append(question_segment.text)
 
     ## show all buckets
-    print("\nAmbiguous:")
+    debug_print("\nAmbiguous:")
     for question_segment, topk in ambiguous_segments:
-        print(f'  "{question_segment.text}" -> {topk}')
+        debug_print(f'  "{question_segment.text}" -> {topk}')
 
-    print("\nClear matches:")
+    debug_print("\nClear matches:")
     for column, segment in clear_matches:
-        print(f'  "{segment}" -> {column}')
+        debug_print(f'  "{segment}" -> {column}')
 
-    print("\nClear, no match (X):")
+    debug_print("\nClear, no match (X):")
     for segment in no_match_segments:
-        print(f'  "{segment}"')
+        debug_print(f'  "{segment}"')
 
     return ambiguous_segments, clear_matches, no_match_segments, phrases

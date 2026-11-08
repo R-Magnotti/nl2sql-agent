@@ -6,14 +6,14 @@ the wrappers here add what MCP needs: typed parameters, and the descriptions the
 import contextlib
 import sys
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
 import RAG_agent   ## loads the models and connects to postgres once, at server start
 
 
 ## initialize the MCP server, give it a name and log level
-mcp = FastMCP("nl2sqlMCP", log_level="ERROR")
+mcp = MCPServer("nl2sqlMCP", log_level="ERROR")
 
 @mcp.tool(
     name="check_ambiguity",
@@ -23,9 +23,7 @@ mcp = FastMCP("nl2sqlMCP", log_level="ERROR")
                 "plus its candidate columns with cosine scores and critic probabilities. It never asks the user anything."
 )
 def check_ambiguity(question: str = Field(description="The user's question, as they asked it")) -> dict:
-    ## deliberate.py still prints debug output. over stdio, stdout carries the protocol itself, so prints go to stderr
-    with contextlib.redirect_stdout(sys.stderr):
-        return RAG_agent.check_ambiguity(question)
+    return RAG_agent.check_ambiguity(question)
 
 
 @mcp.tool(
@@ -38,8 +36,7 @@ def answer_question(
     question: str = Field(description="The user's question, as passed to check_ambiguity"),
     columns: dict[str, str] = Field(description='Each phrase mapped to the column it means, e.g. {"Which quarter": "dim_date.fiscal_quarter"}'),
 ) -> dict:
-    with contextlib.redirect_stdout(sys.stderr):
-        return RAG_agent.answer_question(question, columns)
+    return RAG_agent.answer_question(question, columns)
 
 
 @mcp.tool(
@@ -52,4 +49,9 @@ def describe_data() -> str:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    ## stdio for Claude clients, which hold one connection open.
+    ## http for the LlamaIndex client, which starts a new stdio process per call
+    if "--http" in sys.argv:
+        mcp.run(transport="streamable-http")   ## http://127.0.0.1:8000/mcp
+    else:
+        mcp.run(transport="stdio")

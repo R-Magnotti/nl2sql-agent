@@ -34,4 +34,9 @@ psycopg[binary] >= 3.3.6
 pgvector >= 0.5.1
 
 # --- mcp server ------------------------------------------------------------
-mcp>=1.2.0,<2                    # agent/mcp_server.py; FastMCP from 1.2.0, <2 bc 2.x renamed it MCPServer
+mcp>=2.3.0                       # agent/mcp_server.py; 2.x renamed FastMCP to MCPServer
+
+# --- agent client (agent/mcp_client.py) ------------------------------------
+llama-index-core>=0.14.25
+llama-index-llms-ollama>=0.11.0
+llama-index-tools-mcp>=0.6.0     # pulls in mcp 2.x
