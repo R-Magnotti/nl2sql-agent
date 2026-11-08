@@ -1,5 +1,6 @@
 import re
 import os
+import sys
 import json
 from pathlib import Path
 from dotenv import load_dotenv
@@ -15,6 +16,14 @@ with open(Path(__file__).resolve().parent / "config.json") as f:
 THRESHOLD = config["check_ambiguity"]["threshold"]
 TOP_K = config["check_ambiguity"]["top_k"]
 RETRIES = config["answer_question"]["retries"]   ## how many times to regenerate sql that puts a column on the wrong table
+
+## the pipeline's diagnostic prints: off unless config.json has "debug": true, or a notebook sets agent_utils.DEBUG = True.
+## debug_print reads DEBUG each time it's called, so flipping it later works. output goes to stderr, never into the MCP protocol on stdout
+DEBUG = config["debug"]
+
+def debug_print(*args, **kwargs):
+    if DEBUG:
+        print(*args, file=sys.stderr, **kwargs)
 
 ## this will add DATABASE. prefix to all FROM clauses
 def add_table_prefix(query: str, prefix: str = "nl2sql_dev") -> str:

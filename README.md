@@ -7,7 +7,7 @@ Ask a data warehouse questions in plain English. When the question is ambiguous,
 - Asks instead of guessing. A logprob-margin gate flags any phrase in the question that could mean more than one column.
 - An analytics stack underneath, a BigQuery warehouse, a dbt-tested star schema and aggregate marts (no toy schema).
 - The raw data ships dirty on purpose, duplicates, nulls, orphan keys, impossible dates. Every drop in the dbt models is a written rule.
-- Runs on local models through Ollama, llama3.1:8b writes the SQL and gemma3:1b is the critic. No API keys, no cost, and no question, schema or row goes to an outside AI provider.
+- Runs on local models through Ollama, llama3.1:8b writes the SQL and qwen3:4b-instruct is the critic. No API keys, no cost, and no question, schema or row goes to an outside AI provider.
 - Swap the backend with env vars, any OpenAI-compatible endpoint works.
 
 ## ℹ️ Overview
@@ -62,7 +62,7 @@ Same question, two answers about $6K apart, and both are fair readings. An agent
 1. **Preprocess.** Every warehouse column gets one string built from its table name, column name and description, embedded with `all-MiniLM-L6-v2` and stored in a pgvector table. The descriptions are empty for now, so it's names only. MiniLM is small and fast, retrieval only has to get the right column into the top 3, and the critic makes the actual call.
 2. **Parse.** benepar parses the question and keeps the phrases that can point at a column - noun phrases like "the highest sales", prepositional phrases like "in February 2024", wh-phrases like "which quarter" and adverb phrases like "monthly".
 3. **Retrieve.** Each phrase gets embedded with the same model, and pgvector returns its 3 closest columns by cosine similarity. It's an exact search, at 74 columns there's no need for an index.
-4. **Judge.** One call to a small critic model (gemma3:1b) covers every phrase. Each phrase gets its candidates as lettered options, A to C, plus X for no match, and the critic answers with a letter per phrase at temperature 0. The logprobs at each letter turn into a probability for every option, and when the top two are within 0.1 of each other the phrase is ambiguous.
+4. **Judge.** One call to a small critic model (qwen3:4b-instruct) covers every phrase. Each phrase gets its candidates as lettered options, A to C, plus X for no match, and the critic answers with a letter per phrase at temperature 0. The logprobs at each letter turn into a probability for every option, and when the top two are within 0.1 of each other the phrase is ambiguous.
 5. **Report.** `check_ambiguity` returns every phrase with its verdict (clear, ambiguous or no match), its pick and the scores behind it. Nothing gets asked or guessed here.
 6. **Clarify.** When a phrase comes back ambiguous, the caller asks the user which one they meant, offering only the candidates `check_ambiguity` returned, then passes that pick to `answer_question`. For a no-match phrase, the caller tells the user nothing in the data covers it. Right now the caller is you, in Python. Once the MCP server lands it's the agent, which also decides when more asking stops helping.
 7. **Answer.** `answer_question` takes a column for each phrase. llama3.1:8b writes the SQL with six worked examples in its prompt, sqlglot checks it's valid BigQuery SQL, and BigQuery runs it. A bad query comes back as an error with the stage that failed.
@@ -116,9 +116,9 @@ python precompute_col_embeddings.py   ## embeds every warehouse column into post
 Get the models.
 
 ```bash
-ollama serve                 ## in its own terminal
-ollama pull llama3.1:8b      ## SQL model, ~5 GB, one time
-ollama pull gemma3:1b        ## critic model, ~800 MB, one time
+ollama serve                   ## in its own terminal
+ollama pull llama3.1:8b        ## SQL model, ~5 GB, one time
+ollama pull qwen3:4b-instruct  ## critic model, ~2.5 GB, one time
 ```
 
 Then call the functions like in Usage.

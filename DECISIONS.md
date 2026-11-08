@@ -5,6 +5,7 @@
 **Decision:** Plain Python, direct calls to the endpoint.
 **Why:** The system's small enough to own every layer. Debugging my own code beats stepping through framework internals, and I skip the dependency churn.
 **Tradeoffs:** I rebuild small things a framework gives for free, templating, retries. With many models or tools in play I'd revisit.
+**Update:** The agent client's the exception. It runs on LlamaIndex for the tool-calling loop and chat history. Everything behind the tools is still plain calls.
 
 ## 📝 Model choice for query-column inferencing
 
@@ -13,6 +14,7 @@
 **Decision:** qwen3:4b, prompted, with descriptions. 33/41.
 **Why:** Top of the table (evals/reports/test_retrieval_out.txt), and the only judge well clear of the majority baseline -- always answering `CLEAR` scores 21/41. The best *embedder* is about the same performance at 32/41, but its gating thresholds (`GAP` and `clear_floor`) are fitted on these same 41 cases while the judge has no fitted parameters, so only one of those two numbers is held out. `REFUSE` is 8/8 against the best embedder's 5/8. gemma3:4b landed below the baseline; qwen3:0.6b and 4b-instruct were close to the baseline.
 **Tradeoffs:** Weakest among all categories, on `AMBIGUOUS` for qwen3:4b at 6/12, and all six misses come back `CLEAR` -- it guesses which column the user meant instead of asking, which is the costly error here. `name_only` is a little bit safer on that class (7/12) for two points less in total across all examples and categories. Costs a generation per decision instead of a dot product (i.e. embedding models), plus a running ollama server. With 41 cases anything inside ±2 is noise, so this is directional. The bet is that a prompt transfers across schemas where a threshold is refit per warehouse.
+**Update:** The joint critic now runs qwen3:4b-instruct, see "Non-thinking critic for the joint call".
 
 ## 📝 Two-stage ambiguity layer for RAG agent: retrieve, then judge
 
@@ -52,7 +54,7 @@
 ## 📝 Code for the fixed steps, an agent for the clarification calls
 **Context:** Most of my system is fixed steps that run the same way every time, parsing, retrieval, the gate, writing and checking the SQL. Clarification is different, whether to ask, what to ask, and when more asking stops helping all depend on the conversation, and a pipeline can’t plan for every case.
 **Options considered:** One pipeline with a fixed clarification round, a tool for every step with the agent driving all of it, the fixed steps as code inside tools with an agent making the clarification calls.
-**Decision:** The fixed steps stay as code inside my tools, and MCP is how the agent reaches them. check_ambiguity reports the evidence and never asks anyone. The agent weighs it and decides whether to ask, resolve it from context, call it no match or a partial match, or stop asking.
+**Decision:** The fixed steps stay as code inside my tools, and MCP is how the agent reaches them. check_ambiguity reports the evidence and never asks anyone. The agent weighs it and decides whether to ask, resolve it from context, call it no match or a partial match, re-run the check with what the user added, or stop asking.
 **Why:** The fixed steps don’t need judgment, so code runs them the same way every time. The clarification calls do, they depend on what the user’s already said, how sure the gate is, how many times they’ve been asked, and whether a person’s even there. My old fixed round just dropped whatever was still ambiguous, and the SQL model guessed it.
 **Tradeoffs:** Answers depend partly on the agent’s model, and a weak agent might ask too much or too little.
 
@@ -71,3 +73,24 @@
 **Why:** The search runs in the database, so the agent doesn't hold the whole catalog in memory. An HNSW index can go on once the catalog hits thousands of columns, and filters like leaving out the `_raw` tables go in the same query. The catalog's one table the precompute script writes and the agent reads, so there's no binary file sitting in the repo.
 **Evidence:** Before deleting the .npz I ran the 41 probes from `evals/dataset.py` through both searches with the same query embedding. Both catalogs had the same 74 columns and vectors, and all 41 probes came back with the same top 3 columns in the same order with matching scores. The old file's in git at `7428f19`.
 **Tradeoffs:** The agent needs Postgres running and `POSTGRES_URL` set. The wrong-table check reads column names once at import, so the agent has to restart after a rebuild. A full rebuild's fine at 74 rows. At scale I'd keep a hash per row, embed only what changed, upsert by name and delete what's gone.
+
+
+## 📝 Non-thinking critic for the joint call
+**Context:** The joint call reads the logprob at each verdict letter, so the critic can't think before it answers. qwen3:4b won the evals, but only with thinking on. gemma3:1b was a placeholder.
+**Decision:** qwen3:4b-instruct.
+**Why:** It doesn't think, so the letter logprobs work as is, and it was the best judge on the ambiguous cases in the evals.**Tradeoffs:** It was weaker on clear cases in the evals, and the evals don't test the letter-margin setup itself.
+
+
+## 📝 qwen3:8b as the agent model
+**Context:** The agent client needs a model that makes real tool calls and only answers from what the tools return.
+**Options considered:** llama3.1:8b, qwen3:4b-instruct, qwen3:8b.
+**Decision:** qwen3:8b.
+**Why:** llama3.1:8b wrote its tool calls out as text, and qwen3:4b-instruct skipped `answer_question` and made up a result. qwen3:8b got through the whole loop on the first try.
+**Tradeoffs:** It's a third model for Ollama to hold, next to the critic and the SQL model.
+
+
+## 📝 One schema file for the SQL model and the agent
+**Context:** The table and column list lived inside the SQL prompt, and `data/README.md` describes the raw CSVs, not the tables the SQL runs on.
+**Decision:** The schema lives in `data/warehouse.txt`. The SQL prompt reads it, and `describe_data` hands the same text to the agent.
+**Why:** One copy to keep up to date, and the agent and the SQL model work from the same schema. Pointing at another warehouse means swapping one file.
+**Tradeoffs:** It's read once at import, so the agent needs a restart after editing it.
