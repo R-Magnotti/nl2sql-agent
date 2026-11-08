@@ -7,7 +7,7 @@ Ask a data warehouse questions in plain English. When the question is ambiguous,
 - Asks instead of guessing. A logprob-margin gate flags any phrase in the question that could mean more than one column.
 - An analytics stack underneath, a BigQuery warehouse, a dbt-tested star schema and aggregate marts (no toy schema).
 - The raw data ships dirty on purpose, duplicates, nulls, orphan keys, impossible dates. Every drop in the dbt models is a written rule.
-- Runs on local models through Ollama, llama3.1:8b writes the SQL and qwen3:4b-instruct is the critic. No API keys, no cost, and no question, schema or row goes to an outside AI provider.
+- Runs on local models through Ollama, llama3.1:8b writes the SQL, qwen3:4b-instruct is the critic and qwen3:8b runs the agent. No API keys, no cost, and no question, schema or row goes to an outside AI provider.
 - Swap the backend with env vars, any OpenAI-compatible endpoint works.
 
 ## ℹ️ Overview
@@ -18,11 +18,20 @@ The question gets split into phrases, each phrase pulls its closest columns from
 
 February is the classic case. Calendar February and fiscal February give different numbers, so the right move is to ask which one you mean.
 
-Right now the pieces run as three functions, `check_ambiguity`, `answer_question` and `describe_data`. After the gate fixes they get wrapped as an MCP server, so an agent can run the clarification loop and answer in plain English.
+The pieces are three tools, `check_ambiguity`, `answer_question` and `describe_data`, served over MCP. A local agent runs the clarification loop and answers in plain English.
 
 ## 🚀 Usage
 
-Run it from the `agent/` folder.
+Start the MCP server, then talk to the agent in a second terminal. Both run from the repo root.
+
+```bash
+python agent/mcp_server.py --http   ## terminal 1: serves the three tools at http://127.0.0.1:8000/mcp
+python agent/mcp_client.py          ## terminal 2: chat with the agent
+```
+
+Without `--http` the server talks over stdio instead, for MCP clients that start it themselves, like Claude Desktop or the MCP Inspector.
+
+To call the tools directly, run Python from the `agent/` folder.
 
 ```python
 from RAG_agent import check_ambiguity, answer_question
@@ -64,7 +73,7 @@ Same question, two answers about $6K apart, and both are fair readings. An agent
 3. **Retrieve.** Each phrase gets embedded with the same model, and pgvector returns its 3 closest columns by cosine similarity. It's an exact search, at 74 columns there's no need for an index.
 4. **Judge.** One call to a small critic model (qwen3:4b-instruct) covers every phrase. Each phrase gets its candidates as lettered options, A to C, plus X for no match, and the critic answers with a letter per phrase at temperature 0. The logprobs at each letter turn into a probability for every option, and when the top two are within 0.1 of each other the phrase is ambiguous.
 5. **Report.** `check_ambiguity` returns every phrase with its verdict (clear, ambiguous or no match), its pick and the scores behind it. Nothing gets asked or guessed here.
-6. **Clarify.** When a phrase comes back ambiguous, the caller asks the user which one they meant, offering only the candidates `check_ambiguity` returned, then passes that pick to `answer_question`. For a no-match phrase, the caller tells the user nothing in the data covers it. Right now the caller is you, in Python. Once the MCP server lands it's the agent, which also decides when more asking stops helping.
+6. **Clarify.** When a phrase comes back ambiguous, the caller asks the user which one they meant, offering only the candidates `check_ambiguity` returned, then passes that pick to `answer_question`. For a no-match phrase, the caller tells the user nothing in the data covers it. The caller is usually the agent, which also decides when more asking stops helping. Called from Python, it's you.
 7. **Answer.** `answer_question` takes a column for each phrase. llama3.1:8b writes the SQL with six worked examples in its prompt, sqlglot checks it's valid BigQuery SQL, and BigQuery runs it. A bad query comes back as an error with the stage that failed.
 
 ## 🧪 Evals
@@ -119,11 +128,12 @@ Get the models.
 ollama serve                   ## in its own terminal
 ollama pull llama3.1:8b        ## SQL model, ~5 GB, one time
 ollama pull qwen3:4b-instruct  ## critic model, ~2.5 GB, one time
+ollama pull qwen3:8b           ## agent model, ~5 GB, one time
 ```
 
-Then call the functions like in Usage.
+Then start the server and the agent like in Usage.
 
-For a different model or backend, set `LLM_BASE_URL`, `LLM_MODEL` and `LLM_API_KEY`. The critic and the SQL model read the same ones for now.
+For a different model or backend, set `LLM_BASE_URL`, `LLM_MODEL` and `LLM_API_KEY`. The critic and the SQL model read the same ones for now. The agent's model is set in `agent/mcp_client.py`.
 
 ## 📊 The data
 
@@ -143,10 +153,10 @@ The gap between raw and clean comes from 300 duplicate rows, 30 orphan product k
 Next up, roughly in order.
 
 1. Gate fixes, a similarity floor so near misses get flagged, the raw tables out of the catalog, and a check that the SQL only uses the picked columns
-2. An MCP server for the three tools, with an agent running the clarification loop
-3. An eval harness, about 40 gold questions with their right answers, run end to end on the old pipeline and the new one4. Column descriptions in the dbt YAML
-5. A semantic layer, so computed metrics like average selling price (revenue over units) get defined once in dbt and the matcher can find them
-6. Airflow, with incremental daily loads
+2. An eval harness, about 40 gold questions with their right answers, run end to end on the old pipeline and the new one
+3. Column descriptions in the dbt YAML
+4. A semantic layer, so computed metrics like average selling price (revenue over units) get defined once in dbt and the matcher can find them
+5. Airflow, with incremental daily loads
 
 ## 💭 Feedback
 
